@@ -30,23 +30,11 @@ fn read_config_file() -> Result<DbConfig, Box<Error>> {
     }
 }
 
-fn connect_to_main_database(config: &DbConfig) -> Connection {
-    Connection::connect(&config.live_url[..], TlsMode::None).unwrap()
+fn connect_to_main_database(config: &DbConfig) -> postgres::Result<Connection> {
+    Connection::connect(&config.live_url[..], TlsMode::None)
 }
 
-fn boostrap_test_database() -> Connection {
-    let config = read_config_file().unwrap();
-
-    let conn = Connection::connect(config.test_url, postgres::TlsMode::None).unwrap();
-
-    /* handle failed test runs that didn't clean up properly */
-    drop_schema(&conn);
-    bootstrap_schema(&conn);
-
-    conn
-}
-
-fn bootstrap_schema(conn: &Connection) {
+fn bootstrap_schema(conn: &Connection) -> postgres::Result<u64> {
     conn.execute(
         "create table if not exists exercises(
         id serial primary key,
@@ -59,19 +47,16 @@ fn bootstrap_schema(conn: &Connection) {
         consecutive_successful_reviews integer not null default 0
     )",
         &[],
-    )
-    .unwrap();
+    )?;
 
     conn.execute(
         "create index if not exists exercises_due_at on exercises(due_at)",
         &[],
     )
-    .unwrap();
 }
 
-fn drop_schema(conn: &Connection) {
+fn drop_schema(conn: &Connection) -> postgres::Result<u64> {
     conn.execute("drop table if exists exercises cascade", &[])
-        .unwrap();
 }
 
 fn schema_is_loaded(conn: &Connection) -> bool {
@@ -406,9 +391,202 @@ fn save_parsed_exercises(exercises: &Vec<Exercise>, conn: &Connection) -> Result
     }
 }
 
+fn usage(app_name: &String) {
+    println!("Usage: {} <command> [command-param]\n", app_name);
+    println!("  bootstrap_schema\tBootstrap the database schema");
+    println!("  drop_schema\t\tDrop the database schema");
+    println!("  import <path>\t\tImport a file");
+    println!("  ls\t\t\tList all exercises by due date descending");
+    println!("  review\t\tReview due exercises");
+}
+
+fn bootstrap_schema_command() {
+    // This code is duplicated to avoid executing it unless absolutely necessary
+    let config = read_config_file();
+
+    if let Err(e) = config {
+        eprintln!("Error reading configuration file: {}", e);
+        return;
+    }
+
+    let conn = connect_to_main_database(&config.unwrap());
+
+    if let Err(e) = conn {
+        eprintln!("Error connecting to database: {}", e);
+        return;
+    }
+
+    if let Err(e) = bootstrap_schema(&conn.unwrap()) {
+        eprintln!("Error bootstrapping database: {}", e);
+        return;
+    }
+
+    println!("Database schema bootstrapped.");
+}
+
+fn drop_schema_command() {
+    eprintln!("This will irreversibly drop all data in the database! Are you sure you want to proceed? Type 'drop schema' without quotes to proceed.");
+    let mut buffer = String::new();
+    if let Err(_) = std::io::stdin().read_line(&mut buffer) {
+        eprintln!("Invalid response");
+        return;
+    }
+
+    let trimmed_input = buffer.trim();
+    if trimmed_input != "drop schema" {
+        eprintln!("Got response \"{}\" but needed \"drop schema\" to proceed.", trimmed_input);
+        return;
+    }
+
+    // This code is duplicated to avoid executing it unless absolutely necessary
+    let config = read_config_file();
+
+    if let Err(e) = config {
+        eprintln!("Error reading configuration file: {}", e);
+        return;
+    }
+
+    let conn = connect_to_main_database(&config.unwrap());
+
+    if let Err(e) = conn {
+        eprintln!("Error connecting to database: {}", e);
+        return;
+    }
+
+    if let Err(e) = drop_schema(&conn.unwrap()) {
+        eprintln!("Error dropping dataase: {}", e);
+        return;
+    }
+
+    println!("Database schema dropped.");
+}
+
+const EXCERPT_LENGTH: usize = 80;
+
+fn string_excerpt(s: &String) -> &str {
+    if s.len() <= EXCERPT_LENGTH {
+        return &s[..]
+    }
+    return &s[..EXCERPT_LENGTH] 
+}
+
+fn import_command(path: &String) {
+    match parse_exercises(Path::new(path)) {
+        Ok(exercises) => {
+            // This code is duplicated to avoid executing it unless absolutely necessary
+            let config = read_config_file();
+
+            if let Err(e) = config {
+                eprintln!("Error reading configuration file: {}", e);
+                return;
+            }
+
+            let conn = connect_to_main_database(&config.unwrap());
+
+            if let Err(e) = conn {
+                eprintln!("Error connecting to database: {}", e);
+                return;
+            }
+
+            println!("Here are the exercises that are about to be imported: ");
+
+            for exercise in exercises.iter() {
+                println!("Description: {}", string_excerpt(&exercise.description));
+                println!("Source: {}", string_excerpt(&exercise.source));
+                println!("Reference: {}\n", string_excerpt(&exercise.reference_answer));
+            }
+
+            println!("Import all of these? [y/N]");
+            let mut buffer = String::new();
+            if let Err(_) = std::io::stdin().read_line(&mut buffer) {
+                eprintln!("Invalid response");
+                return;
+            }
+
+            let trimmed_input = buffer.trim();
+            if trimmed_input != "y" {
+                eprintln!("Got response \"{}\" but needed \"y\" to proceed. No data was saved.", trimmed_input);
+                return;
+            }
+            
+            if let Err(e) = save_parsed_exercises(&exercises, &conn.unwrap()) {
+                eprintln!("Error saving exercises: {}", e);
+                eprintln!("The most likely cause of this is a duplicate description.");
+                return;
+            }
+
+            println!("Imported {} exercises.", exercises.len());
+        },
+        Err(e) => {
+            eprintln!("Error parsing {}: {}", path, e);
+        }
+    }
+}
+
+fn ls_command() {
+    // This code is duplicated to avoid executing it unless absolutely necessary
+    let config = read_config_file();
+
+    if let Err(e) = config {
+        eprintln!("Error reading configuration file: {}", e);
+        return;
+    }
+
+    let conn = connect_to_main_database(&config.unwrap());
+
+    if let Err(e) = conn {
+        eprintln!("Error connecting to database: {}", e);
+        return;
+    }
+
+    let exercises = Exercise::get_all_by_due_date_desc(&conn.unwrap());
+
+    if exercises.is_empty() {
+        println!("No exercises loaded.");
+        return;
+    }
+
+    // TODO page these the way git log does
+    for exercise in exercises.iter() {
+        println!("Description: {}", string_excerpt(&exercise.description));
+        println!("Source: {}", string_excerpt(&exercise.source));
+        println!("Due at: {}\n", &exercise.due_at);
+    }
+}
 fn main() {
-    println!("Hello, world!");
-    // OK, now go write main implementation code: usage, bootstrap command, drop command, import command (preview before import), list all, reviewing!
+    let args = std::env::args().collect::<Vec<_>>();
+
+    let app_name = &args[0];
+ 
+    match args.len() {
+        2 => {
+            let command = &args[1];
+            
+            match &command[..] {
+                "bootstrap_schema" => bootstrap_schema_command(),
+                "drop_schema" => drop_schema_command(),
+                "ls" => ls_command(),
+                _ => {
+                    eprintln!("Unknown command '{}'", &command);
+                    usage(app_name);
+                }
+            }
+        },
+        3 => {
+            let command = &args[1];
+
+            let param = &args[2];
+
+            match &command[..] {
+                "import" => import_command(&param),
+                _ => {
+                    eprintln!("Unknown command '{}'", &command);
+                    usage(app_name);
+                }
+            }
+        }
+        _ => usage(app_name)
+    }
 }
 
 #[cfg(test)]
@@ -419,8 +597,17 @@ mod tests {
         format!("{}", e)
     }
 
-    fn stringify_boxed_dynamic_error(e: Box<dyn Error>) -> String {
-        format!("{}", e)
+    fn boostrap_test_database() -> Connection {
+        // it's OK to unwrap here because we're in a test environment and failing here is fine
+        let config = read_config_file().unwrap();
+
+        let conn = Connection::connect(config.test_url, postgres::TlsMode::None).unwrap();
+
+        /* handle failed test runs that didn't clean up properly */
+        drop_schema(&conn).unwrap();
+        bootstrap_schema(&conn).unwrap();
+
+        conn
     }
 
     #[test]
@@ -429,14 +616,14 @@ mod tests {
 
         assert!(schema_is_loaded(&conn));
 
-        drop_schema(&conn);
+        drop_schema(&conn).unwrap();
 
         assert!(!schema_is_loaded(&conn));
 
-        bootstrap_schema(&conn);
+        bootstrap_schema(&conn).unwrap();
         assert!(schema_is_loaded(&conn));
 
-        drop_schema(&conn);
+        drop_schema(&conn).unwrap();
 
         assert!(!schema_is_loaded(&conn));
     }
@@ -746,7 +933,7 @@ mod tests {
         assert_eq!(saved_exercise.update_interval, 1);
         assert_eq!(saved_exercise.consecutive_successful_reviews, 1);
 
-        saved_exercise.update(&conn);
+        saved_exercise.update(&conn).unwrap();
 
         let saved_exercises = Exercise::get_all_by_due_date_desc(&conn);
 
