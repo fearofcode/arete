@@ -1,0 +1,23 @@
+description: foo
+
+  more foo
+
+     one more, should be trimmed.   
+
+source: here is a single-line source
+reference_answer: here is some more content
+
+    a tab in here
+
+
+description: single-line here
+source: this is multiple lines
+
+    see, multiple lines
+
+reference_answer: this is single-line, too
+
+
+
+
+
