@@ -4,6 +4,7 @@ use chrono::{Duration, Local, NaiveDate};
 use postgres::rows::Row;
 use postgres::types::ToSql;
 use postgres::{Connection, TlsMode};
+use postgres::transaction::Transaction;
 use std::error::Error;
 use std::path::Path;
 
@@ -11,6 +12,10 @@ use std::path::Path;
 struct DbConfig {
     live_url: String,
     test_url: String,
+}
+
+fn todays_date() -> NaiveDate {
+    Local::today().naive_local()
 }
 
 fn read_config_file() -> Result<DbConfig, Box<Error>> {
@@ -46,11 +51,11 @@ fn bootstrap_schema(conn: &Connection) {
         "create table if not exists exercises(
         id serial primary key,
         created_at date not null default current_date,
-        description text not null,
+        description text unique not null,
         source text not null,
         reference_answer text not null,
         due_at date not null default current_date,
-        update_interval integer not null default 1,
+        update_interval integer not null default 0,
         consecutive_successful_reviews integer not null default 0
     )",
         &[],
@@ -104,7 +109,7 @@ const EASINESS_FACTOR: i32 = 2;
 
 impl Exercise {
     fn new(description: &str, source: &str, reference_answer: &str) -> Exercise {
-        let today = Local::today().naive_local();
+        let today = todays_date();
         Exercise {
             id: None,
             created_at: today,
@@ -130,13 +135,59 @@ impl Exercise {
         }
     }
 
-    fn update(&mut self, conn: &Connection) {
+    fn get_all_by_due_date_desc(conn: &Connection) -> Vec<Exercise> {
+        let mut exercises = vec![];
+
+        let due_query = "
+        SELECT 
+            id, created_at, due_at, description, source, reference_answer, update_interval, consecutive_successful_reviews
+        FROM
+            exercises
+        ORDER BY
+            due_at desc, 
+            id desc";
+
+        for row in &conn
+            .query(&due_query, &[])
+            .unwrap()
+        {
+            exercises.push(Exercise::new_from_row(&row));
+        }
+
+        exercises
+    }
+
+    fn create(&self, tx: &Transaction) -> Result<u64, Box<dyn Error>> {
+        // exercise was already inserted
+        if self.id.is_some() {
+            return Err(make_error("Cannot insert, has PK".to_string()))
+        }
+
+        // we can let postgres insert some defaults
+        let values: &[&ToSql] = &[
+            &self.created_at,
+            &self.due_at,
+            &self.description,
+            &self.source,
+            &self.reference_answer,
+        ];
+
+        // the code doesn't really need the generated values when creating, so I don't feel the need to write the code to fill in data
+        // for fields I don't actually need
+        let query = "insert into exercises(created_at, due_at, description, source, reference_answer) values($1, $2, $3, $4, $5)";
+        match tx.execute(query, values) {
+            Ok(i) => Ok(i),
+            Err(e) => Err(Box::new(e))
+        }
+    }
+
+    fn update(&mut self, conn: &Connection) -> Result<u64, Box<dyn Error>> {
         if self.id.is_none() {
-            panic!("Cannot update without an ID")
+            return Err(make_error("Cannot insert, has no PK".to_string()))
         }
 
         let query = "update exercises set created_at = $1, due_at = $2, description = $3, source = $4, 
-        reference_answer = $5, update_interval = $6, consecutive_successful_reviews = $7 where id = $7";
+        reference_answer = $5, update_interval = $6, consecutive_successful_reviews = $7 where id = $8";
 
         let values: &[&ToSql] = &[
             &self.created_at,
@@ -148,38 +199,10 @@ impl Exercise {
             &self.consecutive_successful_reviews,
             &self.id.unwrap(),
         ];
-        conn.execute(query, &values).unwrap();
-    }
-
-    fn sql_column_list() -> String {
-        String::from("id, created_at, due_at, description, source, reference_answer, update_interval, consecutive_successful_reviews")
-    }
-
-    fn get_due(conn: &Connection) -> Vec<Exercise> {
-        let mut exercises = vec![];
-
-        /* no this is not vulnerable to fucking SQL injection, I trust my own fucking input */
-        let due_query = format!(
-            "
-        SELECT 
-            {}
-        FROM
-            exercises
-        WHERE
-            due_at <= $1
-        ORDER BY
-            due_at",
-            Exercise::sql_column_list()
-        );
-
-        for row in &conn
-            .query(&due_query, &[&Local::today().naive_local()])
-            .unwrap()
-        {
-            exercises.push(Exercise::new_from_row(&row));
+        match conn.execute(query, &values) {
+            Ok(i) => Ok(i),
+            Err(e) => Err(Box::new(e))
         }
-
-        exercises
     }
 
     fn get_count(conn: &Connection) -> i32 {
@@ -195,7 +218,7 @@ impl Exercise {
     }
 
     fn update_repetition_interval(&mut self, correct: bool) {
-        self.due_at = Local::today().naive_local();
+        self.due_at = todays_date();
 
         if correct {
             self.consecutive_successful_reviews += 1;
@@ -366,8 +389,26 @@ fn parse_exercises(path: &Path) -> Result<Vec<Exercise>, Box<Error>> {
     }
 }
 
+fn save_parsed_exercises(exercises: &Vec<Exercise>, conn: &Connection) -> Result<(), Box<dyn Error>> {
+    // @Robustness I don't know how to do the types to return whatever type that could be generated by the query
+    let tx = conn.transaction().unwrap();
+
+    for exercise in exercises {
+        // @Performance we could probably do bulk inserts but for small files it won't matter
+        if let Err(e) = exercise.create(&tx) {
+            // rollback will kick in
+            return Err(e)
+        } 
+    }
+    match tx.commit() {
+        Ok(_) => Ok(()),
+        Err(e) => Err(Box::new(e))
+    }
+}
+
 fn main() {
     println!("Hello, world!");
+    // OK, now go write main implementation code: usage, bootstrap command, drop command, import command (preview before import), list all, reviewing!
 }
 
 #[cfg(test)]
@@ -375,6 +416,10 @@ mod tests {
     use super::*;
 
     fn stringify_boxed_error(e: Box<Error>) -> String {
+        format!("{}", e)
+    }
+
+    fn stringify_boxed_dynamic_error(e: Box<dyn Error>) -> String {
         format!("{}", e)
     }
 
@@ -545,15 +590,178 @@ mod tests {
         }
     }
 
-    // test saving parsed exercises
+    #[test]
+    fn test_save_parsed_exercises() {
+        let exercises = vec![
+            Exercise::new("foo", "bar", "baz"),
+            Exercise::new("foo 2", "bar 2", "baz 2"),
+        ];
 
-    // test checking for duplicate exercises
+        let conn = boostrap_test_database();
+
+        save_parsed_exercises(&exercises, &conn).unwrap();
+
+        let saved_exercises = Exercise::get_all_by_due_date_desc(&conn);
+
+        assert_eq!(saved_exercises.len(), 2);
+
+        let today = todays_date();
+
+        assert_eq!(saved_exercises[0].id, Some(2));
+        assert_eq!(saved_exercises[0].created_at, today);
+        assert_eq!(saved_exercises[0].due_at, today);
+        assert_eq!(saved_exercises[0].description, "foo 2");
+        assert_eq!(saved_exercises[0].source, "bar 2");
+        assert_eq!(saved_exercises[0].reference_answer, "baz 2");
+        assert_eq!(saved_exercises[0].update_interval, 0);
+        assert_eq!(saved_exercises[0].consecutive_successful_reviews, 0);
+
+        assert_eq!(saved_exercises[1].id, Some(1));
+        assert_eq!(saved_exercises[1].created_at, today);
+        assert_eq!(saved_exercises[1].due_at, today);
+        assert_eq!(saved_exercises[1].description, "foo");
+        assert_eq!(saved_exercises[1].source, "bar");
+        assert_eq!(saved_exercises[1].reference_answer, "baz");
+        assert_eq!(saved_exercises[1].update_interval, 0);
+        assert_eq!(saved_exercises[1].consecutive_successful_reviews, 0);
+    }
+
+    #[test]
+    fn test_save_parsed_exercise_transaction_handling() {
+        let exercises = vec![
+            Exercise::new("foo", "bar", "baz"),
+            // duplicate description
+            Exercise::new("foo", "bar 2", "baz 2"),
+        ];
+
+        let conn = boostrap_test_database();
+        let result = save_parsed_exercises(&exercises, &conn);
+
+        assert!(result.is_err());
+
+        let e = result.unwrap_err();
+
+        let error_string = stringify_boxed_error(e);
+
+        assert_eq!(error_string, "database error: ERROR: duplicate key value violates unique constraint \"exercises_description_key\"");
+    }
 
     // test interval updating
+    #[test]
+    fn test_exercise_update_interval_calculations() {
+        let mut exercise = Exercise::new("", "", "");
 
-    // test a simulated review update process end to end
+        let today = Local::today().naive_local();
 
-    // test function for descriptions of all exercises (first ~100 chars, at least) and due date sorted by descending due date
+        assert_eq!(exercise.due_at, today);
+        assert_eq!(exercise.consecutive_successful_reviews, 0);
+        assert_eq!(exercise.update_interval, 0);
 
-    // OK, now go write main implementation code: usage, bootstrap command, drop command, import command (preview before import), list all, reviewing!
+        exercise.update_repetition_interval(true);
+        assert_eq!(exercise.due_at, today + Duration::days(1));
+        assert_eq!(exercise.consecutive_successful_reviews, 1);
+        assert_eq!(exercise.update_interval, 1);
+
+        exercise.update_repetition_interval(true);
+        assert_eq!(exercise.due_at, today + Duration::days(2));
+        assert_eq!(exercise.consecutive_successful_reviews, 2);
+        assert_eq!(exercise.update_interval, 2);
+
+        exercise.update_repetition_interval(true);
+        assert_eq!(exercise.due_at, today + Duration::days(4));
+        assert_eq!(exercise.consecutive_successful_reviews, 3);
+        assert_eq!(exercise.update_interval, 4);
+
+        exercise.update_repetition_interval(true);
+        assert_eq!(exercise.due_at, today + Duration::days(8));
+        assert_eq!(exercise.consecutive_successful_reviews, 4);
+        assert_eq!(exercise.update_interval, 8);
+
+        exercise.update_repetition_interval(true);
+        assert_eq!(exercise.due_at, today + Duration::days(16));
+        assert_eq!(exercise.consecutive_successful_reviews, 5);
+        assert_eq!(exercise.update_interval, 16);
+
+        exercise.update_repetition_interval(true);
+        assert_eq!(exercise.due_at, today + Duration::days(32));
+        assert_eq!(exercise.consecutive_successful_reviews, 6);
+        assert_eq!(exercise.update_interval, 32);
+
+        exercise.update_repetition_interval(true);
+        assert_eq!(exercise.due_at, today + Duration::days(64));
+        assert_eq!(exercise.consecutive_successful_reviews, 7);
+        assert_eq!(exercise.update_interval, 64);
+
+        for i in 1..100 {
+            exercise.update_repetition_interval(true);
+            assert_eq!(exercise.due_at, today + Duration::days(90));
+            assert_eq!(exercise.consecutive_successful_reviews, 7 + i);
+            assert_eq!(exercise.update_interval, 90);
+        }
+
+        exercise.update_repetition_interval(false);
+        assert_eq!(exercise.due_at, today);
+        assert_eq!(exercise.consecutive_successful_reviews, 0);
+        assert_eq!(exercise.update_interval, 0);
+
+        exercise.update_repetition_interval(true);
+        assert_eq!(exercise.due_at, today + Duration::days(1));
+        assert_eq!(exercise.consecutive_successful_reviews, 1);
+        assert_eq!(exercise.update_interval, 1);
+    }
+
+    // test a simulated review update process end to end (update an exercise's fields, check that they get saved in database)
+    #[test]
+    fn test_review_crud_update_process() {
+        let exercise = Exercise::new("foo", "bar", "baz");
+
+        let conn = boostrap_test_database();
+        save_parsed_exercises(&vec![exercise], &conn).unwrap();
+
+        let mut saved_exercises = Exercise::get_all_by_due_date_desc(&conn);
+
+        assert_eq!(saved_exercises.len(), 1);
+
+        let saved_exercise = &mut saved_exercises[0];
+
+        let today = todays_date();
+
+        assert_eq!(saved_exercise.id, Some(1));
+        assert_eq!(saved_exercise.created_at, today);
+        assert_eq!(saved_exercise.due_at, today);
+        assert_eq!(saved_exercise.description, "foo");
+        assert_eq!(saved_exercise.source, "bar");
+        assert_eq!(saved_exercise.reference_answer, "baz");
+        assert_eq!(saved_exercise.update_interval, 0);
+        assert_eq!(saved_exercise.consecutive_successful_reviews, 0);
+
+        saved_exercise.update_repetition_interval(true);
+
+        assert_eq!(saved_exercise.id, Some(1));
+        assert_eq!(saved_exercise.created_at, today);
+        assert_eq!(saved_exercise.due_at, today + Duration::days(1));
+        assert_eq!(saved_exercise.description, "foo");
+        assert_eq!(saved_exercise.source, "bar");
+        assert_eq!(saved_exercise.reference_answer, "baz");
+        assert_eq!(saved_exercise.update_interval, 1);
+        assert_eq!(saved_exercise.consecutive_successful_reviews, 1);
+
+        saved_exercise.update(&conn);
+
+        let saved_exercises = Exercise::get_all_by_due_date_desc(&conn);
+
+        assert_eq!(saved_exercises.len(), 1);
+
+        let saved_exercise = &saved_exercises[0];
+
+        assert_eq!(saved_exercise.id, Some(1));
+        assert_eq!(saved_exercise.created_at, today);
+        assert_eq!(saved_exercise.due_at, today + Duration::days(1));
+        assert_eq!(saved_exercise.description, "foo");
+        assert_eq!(saved_exercise.source, "bar");
+        assert_eq!(saved_exercise.reference_answer, "baz");
+        assert_eq!(saved_exercise.update_interval, 1);
+        assert_eq!(saved_exercise.consecutive_successful_reviews, 1);
+    }
+
 }
