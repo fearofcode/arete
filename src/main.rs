@@ -11,6 +11,7 @@ use std::path::Path;
 #[derive(Deserialize)]
 struct DbConfig {
     live_url: String,
+    #[allow(dead_code)]
     test_url: String,
 }
 
@@ -187,18 +188,6 @@ impl Exercise {
         match conn.execute(query, &values) {
             Ok(i) => Ok(i),
             Err(e) => Err(Box::new(e))
-        }
-    }
-
-    fn get_count(conn: &Connection) -> i32 {
-        let due_query = "SELECT (count(*)::integer) FROM exercises";
-
-        match &conn.query(due_query, &[]).unwrap().iter().next() {
-            Some(row) => {
-                let cnt: i32 = row.get(0);
-                cnt
-            }
-            None => 0,
         }
     }
 
@@ -488,6 +477,12 @@ fn import_command(path: &String) {
                 return;
             }
 
+            let conn = conn.unwrap();
+
+            if !schema_is_loaded(&conn) {
+                eprintln!("Schema is not loaded. Please run bootstrap_schema.");
+                return;
+            }
             println!("Here are the exercises that are about to be imported: ");
 
             for exercise in exercises.iter() {
@@ -509,7 +504,7 @@ fn import_command(path: &String) {
                 return;
             }
             
-            if let Err(e) = save_parsed_exercises(&exercises, &conn.unwrap()) {
+            if let Err(e) = save_parsed_exercises(&exercises, &conn) {
                 eprintln!("Error saving exercises: {}", e);
                 eprintln!("The most likely cause of this is a duplicate description.");
                 return;
@@ -539,12 +534,21 @@ fn ls_command() {
         return;
     }
 
-    let exercises = Exercise::get_all_by_due_date_desc(&conn.unwrap());
+    let conn = conn.unwrap();
+
+    if !schema_is_loaded(&conn) {
+        eprintln!("Schema is not loaded. Please run bootstrap_schema.");
+        return;
+    }
+
+    let exercises = Exercise::get_all_by_due_date_desc(&conn);
 
     if exercises.is_empty() {
         println!("No exercises loaded.");
         return;
     }
+
+    println!("{} exercises:\n", exercises.len());
 
     // TODO page these the way git log does
     for exercise in exercises.iter() {
