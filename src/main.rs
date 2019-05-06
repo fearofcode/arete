@@ -7,6 +7,10 @@ use postgres::{Connection, TlsMode};
 use postgres::transaction::Transaction;
 use std::error::Error;
 use std::path::Path;
+use crossterm::{cursor, input, terminal, ClearType, Attribute, InputEvent, KeyEvent, RawScreen, TerminalCursor};
+use std::io;
+use std::io::Write;
+
 
 #[derive(Deserialize)]
 struct DbConfig {
@@ -77,6 +81,7 @@ fn schema_is_loaded(conn: &Connection) -> bool {
     }
 }
 
+#[derive(Debug)]
 struct Exercise {
     id: Option<i32>,
     created_at: NaiveDate,
@@ -86,6 +91,12 @@ struct Exercise {
     reference_answer: String,
     update_interval: i32,
     consecutive_successful_reviews: i32,
+}
+
+impl PartialEq<Exercise> for Exercise {
+    fn eq(&self, other: &Exercise) -> bool {
+        self.id == other.id
+    }
 }
 
 const ONE_DAY: i32 = 1;
@@ -121,6 +132,31 @@ impl Exercise {
         }
     }
 
+    fn get_due(conn: &Connection) -> Vec<Exercise> {
+        let mut exercises = vec![];
+
+        let due_query = "
+        SELECT 
+            id, created_at, due_at, description, source, reference_answer, update_interval, consecutive_successful_reviews
+        FROM
+            exercises
+        WHERE
+            due_at <= $1
+        ORDER BY
+            due_at desc, 
+            id desc";
+    
+        let today = todays_date();
+
+        for row in &conn
+            .query(&due_query, &[&today])
+            .unwrap()
+        {
+            exercises.push(Exercise::new_from_row(&row));
+        }
+
+        exercises
+    }
     fn get_all_by_due_date_desc(conn: &Connection) -> Vec<Exercise> {
         let mut exercises = vec![];
 
@@ -382,6 +418,7 @@ fn save_parsed_exercises(exercises: &Vec<Exercise>, conn: &Connection) -> Result
 
 fn usage(app_name: &String) {
     println!("Usage: {} <command> [command-param]\n", app_name);
+    println!("Available commands:\n");
     println!("  bootstrap_schema\tBootstrap the database schema");
     println!("  drop_schema\t\tDrop the database schema");
     println!("  import <path>\t\tImport a file");
@@ -389,19 +426,18 @@ fn usage(app_name: &String) {
     println!("  review\t\tReview due exercises");
 }
 
+fn bootstrap_live_database_connection() -> Result<Connection, Box<dyn Error>> {
+    let config = read_config_file()?;
+    let conn = connect_to_main_database(&config)?;
+
+    Ok(conn)
+}
+
 fn bootstrap_schema_command() {
-    // This code is duplicated to avoid executing it unless absolutely necessary
-    let config = read_config_file();
-
-    if let Err(e) = config {
-        eprintln!("Error reading configuration file: {}", e);
-        return;
-    }
-
-    let conn = connect_to_main_database(&config.unwrap());
+    let conn = bootstrap_live_database_connection();
 
     if let Err(e) = conn {
-        eprintln!("Error connecting to database: {}", e);
+        eprintln!("Error starting up: {}", e);
         return;
     }
 
@@ -427,23 +463,15 @@ fn drop_schema_command() {
         return;
     }
 
-    // This code is duplicated to avoid executing it unless absolutely necessary
-    let config = read_config_file();
-
-    if let Err(e) = config {
-        eprintln!("Error reading configuration file: {}", e);
-        return;
-    }
-
-    let conn = connect_to_main_database(&config.unwrap());
+    let conn = bootstrap_live_database_connection();
 
     if let Err(e) = conn {
-        eprintln!("Error connecting to database: {}", e);
+        eprintln!("Error starting up: {}", e);
         return;
     }
 
     if let Err(e) = drop_schema(&conn.unwrap()) {
-        eprintln!("Error dropping dataase: {}", e);
+        eprintln!("Error dropping database: {}", e);
         return;
     }
 
@@ -462,18 +490,10 @@ fn string_excerpt(s: &String) -> &str {
 fn import_command(path: &String) {
     match parse_exercises(Path::new(path)) {
         Ok(exercises) => {
-            // This code is duplicated to avoid executing it unless absolutely necessary
-            let config = read_config_file();
-
-            if let Err(e) = config {
-                eprintln!("Error reading configuration file: {}", e);
-                return;
-            }
-
-            let conn = connect_to_main_database(&config.unwrap());
+            let conn = bootstrap_live_database_connection();
 
             if let Err(e) = conn {
-                eprintln!("Error connecting to database: {}", e);
+                eprintln!("Error starting up: {}", e);
                 return;
             }
 
@@ -519,18 +539,10 @@ fn import_command(path: &String) {
 }
 
 fn ls_command() {
-    // This code is duplicated to avoid executing it unless absolutely necessary
-    let config = read_config_file();
-
-    if let Err(e) = config {
-        eprintln!("Error reading configuration file: {}", e);
-        return;
-    }
-
-    let conn = connect_to_main_database(&config.unwrap());
+    let conn = bootstrap_live_database_connection();
 
     if let Err(e) = conn {
-        eprintln!("Error connecting to database: {}", e);
+        eprintln!("Error starting up: {}", e);
         return;
     }
 
@@ -557,6 +569,314 @@ fn ls_command() {
         println!("Due at: {}\n", &exercise.due_at);
     }
 }
+
+struct HorizontalMenuOption<'a> {
+    label: &'a str,
+    shortcut: char,
+}
+
+impl<'a> HorizontalMenuOption<'a> {
+    fn new(label: &'a str, shortcut: char) -> HorizontalMenuOption<'a> {
+        HorizontalMenuOption { label, shortcut }
+    }
+}
+
+// quick and dirty debugging mechanism for debugging TUI apps. run touch debug.log && tail -f debug.log in a separate window,
+// then debug statements will show up there without messing up your UI.
+#[allow(dead_code)]
+fn debug_log_print(msg: String) {
+    use std::fs::OpenOptions;
+
+    let mut file = {
+        if Path::new("debug.log").exists() {
+            OpenOptions::new().append(true).open("debug.log").unwrap()
+        } else {
+            OpenOptions::new().create(true).open("debug.log").unwrap()
+        }
+    };
+
+    file.write_all(msg.as_bytes()).unwrap();
+    file.flush().unwrap();
+}
+
+fn draw_horizontal_menu(
+    options: &[HorizontalMenuOption],
+    cursor: &TerminalCursor,
+    selected_index: usize,
+    max_selected_index: usize,
+) -> io::Result<()> {
+    // NOTE(warren): we shouldn't need to clear the line since we're just going to overwrite it anyway
+
+    // TODO maybe make this configurable?
+    let option_separator = {
+        if cfg!(windows) {
+            "|"
+        } else {
+            "│"
+        }
+    };
+
+    // go to beginning of current line
+    let (_, current_line) = cursor.pos();
+    cursor.goto(0, current_line)?;
+
+    for (i, option) in options.iter().enumerate() {
+        // print the current state of the menu
+        if i == selected_index {
+            print!(
+                "{}{} ({}){}",
+                Attribute::Reverse,
+                option.label,
+                option.shortcut,
+                Attribute::Reset
+            );
+        } else {
+            print!("{} ({})", option.label, option.shortcut);
+        }
+
+        if i < max_selected_index {
+            print!(" {} ", option_separator);
+        }
+
+        io::stdout().flush()?;
+    }
+    Ok(())
+}
+
+// draws a selectable horizontal menu which you can use arrow keys, h/l (a la vim), Ctrl-b/Ctrl-f (a la Emacs), or Ctrl-a/Ctrl-e (a la Emacs),
+// and Esc/Ctrl to exit.
+fn horizontal_menu_select(options: &[HorizontalMenuOption]) -> io::Result<Option<usize>> {
+    // TODO maybe handle mouse events to make options clickable?
+
+    let mut did_select = false;
+    let mut done = false;
+    let mut selected_index = 0;
+    let max_selected_index = options.len() - 1;
+
+    let cursor = cursor();
+
+    // makes for a slightly nicer interface
+    cursor.hide()?;
+
+    while !done {
+        draw_horizontal_menu(&options, &cursor, selected_index, max_selected_index)?;
+
+        // drop into raw mode for input handling
+        let _screen = RawScreen::into_raw_mode()?;
+
+        let input = input();
+        let mut sync_reader = input.read_sync();
+
+        // read input until a valid key (h/l/left/right/Esc) is entered. disregard other input
+        loop {
+            if let Some(key_event) = sync_reader.next() {
+                if let InputEvent::Keyboard(key_press) = key_event {
+                    match key_press {
+                        KeyEvent::Ctrl('a') => {
+                            selected_index = 0;
+                            break;
+                        }
+                        KeyEvent::Ctrl('e') => {
+                            selected_index = max_selected_index;
+                            break;
+                        }
+                        KeyEvent::Char('h') | KeyEvent::Left | KeyEvent::Up | KeyEvent::Ctrl('b') => {
+                            if selected_index >= 1 {
+                                selected_index -= 1;
+                                break;
+                            }
+                        }
+                        KeyEvent::Char('l') | KeyEvent::Right | KeyEvent::Down | KeyEvent::Ctrl('f') => {
+                            if selected_index < max_selected_index {
+                                selected_index += 1;
+                                break;
+                            }
+                        }
+                        KeyEvent::Char('\n') => {
+                            did_select = true;
+                            done = true;
+                            break;
+                        }
+                        KeyEvent::Esc | KeyEvent::Ctrl(_) => {
+                            did_select = false;
+                            done = true;
+                            break;
+                        }
+                        KeyEvent::Char(c) => {
+                            // see if the key stroke matches any of the shortcuts
+                            let mut found_match = false;
+                            for (i, option) in options.iter().enumerate() {
+                                if c == option.shortcut {
+                                    selected_index = i;
+                                    did_select = true;
+                                    done = true;
+                                    found_match = true;
+                                    // redraw to show result of selection
+                                    draw_horizontal_menu(
+                                        &options,
+                                        &cursor,
+                                        selected_index,
+                                        max_selected_index,
+                                    )?;
+                                    break; // this for loop only
+                                }
+                            }
+                            if found_match {
+                                break; // loop { above
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        // the screen will drop here, putting us back into canonical mode when we re-print the menu
+    }
+
+    // want to reshow the cursor since the cursor hide would otherwise persist even after exiting
+    cursor.show()?;
+
+    if did_select {
+        Ok(Some(selected_index))
+    } else {
+        Ok(None)
+    }
+}
+
+fn confirm_exercise_answer(exercise: &mut Exercise, conn: &Connection) {
+    println!("\n\nSource: {}", &exercise.source);
+    println!("Answer: {}\n", &exercise.reference_answer);
+
+    println!("Is the answer you had in mind correct?");
+
+    let confirmation_options = [
+        HorizontalMenuOption::new("Yes", 'y'),
+        HorizontalMenuOption::new("No", 'n'),
+    ];
+
+    loop {
+        match horizontal_menu_select(&confirmation_options) {
+            Ok(result) => match result {
+                Some(selected_index) => {
+                    let was_correct = selected_index == 0;
+                    exercise.update_repetition_interval(was_correct);
+                    if let Err(e) = exercise.update(&conn) {
+                        eprintln!("\nError saving exercise: {}", e);
+                    }
+
+                    if was_correct {
+                        println!("\n\nMarked exercise correct.\n");
+                    } else {
+                        println!("\n\nMarked exercise incorrect.\n");
+                    }
+                    break;
+                }
+                None => {
+                    eprintln!("\nNo selection was made.");
+                    std::process::exit(1);
+                }
+            },
+            _ => {
+                eprintln!("\nI/O error while selecting option");
+                std::process::exit(1);
+            }
+        }
+
+    }
+}
+
+fn print_next_exercise_input() {
+    loop {
+        if let Ok(_) = horizontal_menu_select(&vec![HorizontalMenuOption::new("Next exercise", 'n')]) {
+            break;
+        } else {
+            std::process::exit(1);
+        }
+    }
+}
+
+fn clear_screen() {
+    let terminal = terminal();
+    terminal.clear(ClearType::All).unwrap();
+}
+
+fn review_command() {
+    let conn = bootstrap_live_database_connection();
+
+    if let Err(e) = conn {
+        eprintln!("Error starting up: {}", e);
+        return;
+    }
+
+    let conn = conn.unwrap();
+
+    if !schema_is_loaded(&conn) {
+        eprintln!("Schema is not loaded. Please run bootstrap_schema.");
+        return;
+    }
+
+    let mut exercises = Exercise::get_due(&conn);
+
+    if exercises.is_empty() {
+        println!("No exercises are due.");
+        return;
+    }
+
+    let exercise_cnt = exercises.len();
+
+    clear_screen();
+
+    for (i, exercise) in exercises.iter_mut().enumerate() {
+        println!("{}Exercise {}/{}{}\n", Attribute::Bold, i + 1, exercise_cnt, Attribute::Reset);
+
+        println!("{}\n", &exercise.description);
+        
+        let options = [
+            HorizontalMenuOption::new("Know it", 'y'),
+            HorizontalMenuOption::new("Don't know it", 'n'),
+        ];
+
+        loop {
+            match horizontal_menu_select(&options) {
+                Ok(result) => match result {
+                    Some(selected_index) => {
+                        if selected_index == 0 {
+                            confirm_exercise_answer(exercise, &conn);
+                        } else {
+                            println!("\n\nSource: {}\n", &exercise.source);
+                            println!("Answer: {}\n", &exercise.reference_answer);
+
+                            exercise.update_repetition_interval(false);
+                            if let Err(e) = exercise.update(&conn) {
+                                eprintln!("Error saving exercise: {}", e);
+                            }
+                        }
+                        print_next_exercise_input();
+                        break;
+                    }
+                    None => {
+                        eprintln!("\nNo selection was made.");
+                        std::process::exit(1);
+                    }
+                },
+                _ => {
+                    eprintln!("\nI/O error while selecting option");
+                    std::process::exit(1);
+                }
+            }
+
+        }
+
+        // clear the screen if not last exercise
+        if i < exercise_cnt - 1 {
+            clear_screen();
+        }
+    }
+
+    println!("\n\n{}Done reviewing!{}", Attribute::Bold, Attribute::Reset);
+}
+
 fn main() {
     let args = std::env::args().collect::<Vec<_>>();
 
@@ -570,6 +890,7 @@ fn main() {
                 "bootstrap_schema" => bootstrap_schema_command(),
                 "drop_schema" => drop_schema_command(),
                 "ls" => ls_command(),
+                "review" => review_command(),
                 _ => {
                     eprintln!("Unknown command '{}'", &command);
                     usage(app_name);
@@ -792,7 +1113,7 @@ mod tests {
 
         save_parsed_exercises(&exercises, &conn).unwrap();
 
-        let saved_exercises = Exercise::get_all_by_due_date_desc(&conn);
+        let mut saved_exercises = Exercise::get_all_by_due_date_desc(&conn);
 
         assert_eq!(saved_exercises.len(), 2);
 
@@ -815,6 +1136,14 @@ mod tests {
         assert_eq!(saved_exercises[1].reference_answer, "baz");
         assert_eq!(saved_exercises[1].update_interval, 0);
         assert_eq!(saved_exercises[1].consecutive_successful_reviews, 0);
+
+        let first_exercise = &mut saved_exercises[0];
+        first_exercise.due_at += Duration::days(1);
+        assert!(first_exercise.update(&conn).is_ok());
+
+        let due = Exercise::get_due(&conn);
+
+        assert_eq!(due[0], saved_exercises[1]);
     }
 
     #[test]
