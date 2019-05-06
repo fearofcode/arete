@@ -1,0 +1,7 @@
+description: A farmer with a fox, a goose, and a sack of corn needs to cross a river. The farmer has a rowboat, but there is room for only the farmer and one of his three items. Unfortunately, both the fox and the goose are hungry. The fox cannot be left alone with the goose, or the fox will eat the goose. Likewise, the goose cannot be left alone with the sack of corn, or the goose will eat the corn. How does the farmer get everything across the river?
+source: Thinking Like A Programmer, p. 3
+reference_answer: The key is to take things back after moving them. First take the goose across, leaving the fox with the corn:
+  (f c, g). Take the fox across. Take the goose back to the corn: (g c, f). Now we're home free: take the corn across and
+  leave it with the fox. Go back, get the corn, and bring it across.
+
+  The solution here is to swap the fox and the goose once the goose has been transferred.
