@@ -1,5 +1,5 @@
 [package]
-name = "arete-rust-postgresql"
+name = "arete"
 version = "0.1.0"
 authors = ["Warren Henning <warren@rentlytics.com>"]
 edition = "2018"
