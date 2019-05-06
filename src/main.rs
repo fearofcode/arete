@@ -71,15 +71,6 @@ fn drop_schema_command() {
     println!("Database schema dropped.");
 }
 
-const EXCERPT_LENGTH: usize = 80;
-
-fn string_excerpt(s: &String) -> &str {
-    if s.len() <= EXCERPT_LENGTH {
-        return &s[..]
-    }
-    return &s[..EXCERPT_LENGTH] 
-}
-
 fn import_command(path: &String) {
     match parse_exercises(Path::new(path)) {
         Ok(exercises) => {
@@ -99,9 +90,9 @@ fn import_command(path: &String) {
             println!("Here are the exercises that are about to be imported: ");
 
             for exercise in exercises.iter() {
-                println!("Description: {}", string_excerpt(&exercise.description));
-                println!("Source: {}", string_excerpt(&exercise.source));
-                println!("Reference: {}\n", string_excerpt(&exercise.reference_answer));
+                println!("Description: {}", &exercise.description);
+                println!("Source: {}", &exercise.source);
+                println!("Reference: {}\n", &exercise.reference_answer);
             }
 
             println!("Import all of these? [y/N]");
@@ -157,8 +148,8 @@ fn ls_command() {
 
     // TODO page these the way git log does
     for exercise in exercises.iter() {
-        println!("Description: {}", string_excerpt(&exercise.description));
-        println!("Source: {}", string_excerpt(&exercise.source));
+        println!("Description: {}", &exercise.description);
+        println!("Source: {}", &exercise.source);
         println!("Due at: {}\n", &exercise.due_at);
     }
 }

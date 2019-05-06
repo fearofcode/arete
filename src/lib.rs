@@ -245,12 +245,19 @@ fn make_error(error_string: String) -> Box<Error> {
     Box::new(std::io::Error::new(std::io::ErrorKind::Other, error_string))
 }
 
-#[derive(PartialEq)]
-enum FileParsingState {
-    Beginning,
-    ReadingDescription,
-    ReadingSource,
-    ReadingReferenceAnswer,
+#[derive(Debug, Deserialize)]
+struct ImportedExercise {
+    pub description: String,
+    pub source: String,
+    pub reference_answer: String,
+}
+
+fn convert_yaml_str_to_exercises(s: &str) -> Result<Vec<ImportedExercise>, serde_yaml::Error> {
+    serde_yaml::from_str(s)
+}
+
+fn yaml_string_is_empty(s: &String) -> bool {
+    s.trim().is_empty() || s == "~"
 }
 
 pub fn parse_exercises(path: &Path) -> Result<Vec<Exercise>, Box<Error>> {
@@ -258,140 +265,22 @@ pub fn parse_exercises(path: &Path) -> Result<Vec<Exercise>, Box<Error>> {
         Ok(c) => c,
         Err(e) => return Err(Box::new(e)),
     };
-    let mut exercises: Vec<Exercise> = vec![];
 
-    let description_tag = "description:";
-    let description_tag_length = description_tag.len();
-    let source_tag = "source:";
-    let source_tag_length = source_tag.len();
-    let reference_answer_tag = "reference_answer:";
-    let reference_answer_tag_length = reference_answer_tag.len();
-
-    let mut state = FileParsingState::Beginning;
-
-    exercises.push(Exercise::new("", "", ""));
-
-    let mut current_exercise = &mut exercises[0];
-    let mut current_exercise_index = 0;
-
-    for (line_index, line) in content.lines().enumerate() {
-        let human_line = line_index + 1;
-        let trimmed_line = line.trim();
-        let is_line_empty = line.is_empty();
-
-        let mut is_field_continuation = (line.len() >= 3) &&
-            line.chars().nth(0).unwrap_or('x').is_whitespace() &&
-            line.chars().nth(1).unwrap_or('x').is_whitespace();
-        if is_field_continuation {
-            let mut contains_non_whitespace = false;
-            for ch in line.chars().skip(2) {
-                if !ch.is_whitespace() {
-                    contains_non_whitespace = true;
-                    break;
+    match convert_yaml_str_to_exercises(&content) {
+        Ok(exercises) => {
+            for (i, exercise) in exercises.iter().enumerate() {
+                let human_index = i + 1;
+                if yaml_string_is_empty(&exercise.description) {
+                    return Err(make_error(format!("Exercise {} has a blank or missing description.", human_index)));
+                } else if yaml_string_is_empty(&exercise.source) {
+                    return Err(make_error(format!("Exercise {} has a blank or missing source.", human_index)));
+                } else if yaml_string_is_empty(&exercise.reference_answer) {
+                    return Err(make_error(format!("Exercise {} has a blank or missing reference answer.", human_index)));
                 }
             }
-            is_field_continuation = contains_non_whitespace;
+            Ok(exercises.iter().map(|e| Exercise::new(&e.description.trim(), &e.source.trim(), &e.reference_answer.trim())).collect::<Vec<_>>())
         }
-
-        match state {
-            FileParsingState::Beginning => {
-                if trimmed_line.starts_with(description_tag) {
-                    state = FileParsingState::ReadingDescription;
-                    current_exercise.description =
-                        trimmed_line[description_tag_length..].trim().to_string();
-                    if current_exercise.description.is_empty() {
-                        let error_msg = format!(
-                            "Description on line {} is blank.", human_line
-                        );
-
-                        return Err(make_error(error_msg))
-                    }
-                } else if !line.is_empty() {
-                    let error_msg = format!(
-                        "Expected line {} (\"{}\") to either be a description or a blank line.",
-                        human_line, line
-                    );
-
-                    return Err(make_error(error_msg))
-                }
-            }
-            FileParsingState::ReadingDescription => {
-                if trimmed_line.starts_with(source_tag) {
-                    state = FileParsingState::ReadingSource;
-                    current_exercise.source = trimmed_line[source_tag_length..].trim().to_string();
-                    if current_exercise.source.is_empty() {
-                        let error_msg = format!(
-                            "Source on line {} is blank.", human_line
-                        );
-
-                        return Err(make_error(error_msg))
-                    }
-                } else if is_field_continuation {
-                    current_exercise.description += &("\n".to_string() + trimmed_line);
-                } else if !is_line_empty {
-                    let error_msg = format!(
-                        "Expected to keep reading a description or find a source on line {}.",
-                        human_line
-                    );
-
-                    return Err(make_error(error_msg))
-                }
-                current_exercise.description = current_exercise.description.trim().to_string();
-            },
-            FileParsingState::ReadingSource => {
-                if trimmed_line.starts_with(reference_answer_tag) {
-                    state = FileParsingState::ReadingReferenceAnswer;
-                    current_exercise.reference_answer = trimmed_line[reference_answer_tag_length..].trim().to_string();
-                    if current_exercise.reference_answer.is_empty() {
-                        let error_msg = format!(
-                            "Reference answer on line {} is blank.", human_line
-                        );
-
-                        return Err(make_error(error_msg))
-                    }
-                } else if is_field_continuation {
-                    current_exercise.source += &("\n".to_string() + trimmed_line);
-                } else if !is_line_empty {
-                    let error_msg = format!(
-                        "Expected to keep reading a source or find a reference answer on line {}.",
-                        human_line
-                    );
-
-                    return Err(make_error(error_msg))
-                }
-                current_exercise.source = current_exercise.source.trim().to_string();
-            },  
-            FileParsingState::ReadingReferenceAnswer => {
-                if trimmed_line.starts_with(description_tag) {
-                    current_exercise.reference_answer = current_exercise.reference_answer.trim().to_string();
-
-                    if current_exercise.description.is_empty() || current_exercise.source.is_empty() || current_exercise.reference_answer.is_empty() {
-                        let error_msg = format!(
-                            "Exercise {} does not have all its fields filled out.",
-                            current_exercise_index + 1
-                        );
-
-                        return Err(make_error(error_msg))
-                    }
-                    // new exercise
-                    state = FileParsingState::ReadingDescription;
-
-                    exercises.push(Exercise::new("", "", ""));
-                    current_exercise_index += 1;
-                    current_exercise = &mut exercises[current_exercise_index];
-                    current_exercise.description = trimmed_line[description_tag_length..].trim().to_string();
-                } else if is_field_continuation {
-                    current_exercise.reference_answer += &("\n".to_string() + trimmed_line);
-                    current_exercise.reference_answer = current_exercise.reference_answer.trim().to_string();
-                }
-            }
-        }
-    }
-
-    if state != FileParsingState::ReadingReferenceAnswer {
-        Err(make_error("Expected file to end with a reference answer.".to_string()))
-    } else {
-        Ok(exercises)
+        Err(yaml_err) => Err(Box::new(yaml_err))
     }
 }
 
@@ -456,18 +345,47 @@ mod tests {
         let exercises = parse_exercises(
             &Path::new("sample_files")
                 .join("valid")
-                .join("multi_line_inputs.txt"),
+                .join("multi_line_inputs.yaml"),
         )
         .unwrap();
 
-        assert!(exercises.len() == 2);
-        assert!(exercises[0].description == "foo\nmore foo\none more, should be trimmed.");
-        assert!(exercises[0].source == "here is a single-line source");
-        assert!(exercises[0].reference_answer == "here is some more content\na tab in here");
+        assert_eq!(exercises.len(), 2);
+        assert_eq!(exercises[0].description, "foo\nmore foo\none more, should be trimmed.");
+        assert_eq!(exercises[0].source, "here is a single-line source");
+        assert_eq!(exercises[0].reference_answer, "here is some more content\na tab in here");
 
-        assert!(exercises[1].description == "single-line here");
-        assert!(exercises[1].source == "this is multiple lines\nsee, multiple lines");
-        assert!(exercises[1].reference_answer == "this is single-line, too");
+        assert_eq!(exercises[1].description, "single-line here");
+        assert_eq!(exercises[1].source, "this is multiple lines\nsee, multiple lines");
+        assert_eq!(exercises[1].reference_answer, "this is single-line, too");
+    }
+
+    #[test]
+    fn test_indentation_preserved() {
+        let exercises = parse_exercises(
+            &Path::new("sample_files")
+                .join("valid")
+                .join("indentation_preserved.yaml"),
+        )
+        .unwrap();
+
+        assert_eq!(exercises.len(), 1);
+        assert_eq!(exercises[0].description, "Write out the Fisher-Yates shuffle.");
+        assert_eq!(exercises[0].source, "Wikipedia (https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle)");
+        assert_eq!(exercises[0].reference_answer, "for i from 0 to n-2 do\n  j <- random integer such that i <= j < n\n  exchange a[i] and a[j]");
+    }
+    #[test]
+    fn test_valid_longer_example() {
+        let exercises = parse_exercises(
+            &Path::new("sample_files")
+                .join("valid")
+                .join("thinking_like_a_programmer.yaml"),
+        )
+        .unwrap();
+
+        assert_eq!(exercises.len(), 1);
+        assert_eq!(exercises[0].description, "A farmer with a fox, a goose, and a sack of corn needs to cross a river. The farmer has a rowboat, but there is room for only the farmer and one of his three items. Unfortunately, both the fox and the goose are hungry. The fox cannot be left alone with the goose, or the fox will eat the goose. Likewise, the goose cannot be left alone with the sack of corn, or the goose will eat the corn. How does the farmer get everything across the river?");
+        assert_eq!(exercises[0].source, "Thinking Like A Programmer, p. 3");
+        assert_eq!(exercises[0].reference_answer, "The key is to take things back after moving them. First take the goose across, leaving the fox with the corn: (f c, g). Take the fox across. Take the goose back to the corn: (g c, f). Now we\'re home free: take the corn across and leave it with the fox. Go back, get the corn, and bring it across.\n\nThe solution here is to swap the fox and the goose once the goose has been transferred.");
     }
 
     #[test]
@@ -478,12 +396,12 @@ mod tests {
             let exercises = parse_exercises(
                 &Path::new("sample_files")
                     .join("invalid")
-                    .join("completely_invalid.txt")
+                    .join("completely_invalid.yaml")
             );
             assert!(exercises.is_err());
 
             if let Err(e) = exercises {
-                assert_eq!(stringify_boxed_error(e), "Expected line 1 (\"blah\") to either be a description or a blank line.");
+                assert_eq!(stringify_boxed_error(e), "invalid type: string \"blah\", expected a sequence at line 1 column 1");
             } else {
                 assert!(false);
             }
@@ -493,12 +411,12 @@ mod tests {
             let exercises = parse_exercises(
                 &Path::new("sample_files")
                     .join("invalid")
-                    .join("missing_reference_answer.txt")
+                    .join("missing_reference_answer.yaml")
             );
             assert!(exercises.is_err());
 
             if let Err(e) = exercises {
-                assert_eq!(stringify_boxed_error(e), "Expected file to end with a reference answer.");
+                assert_eq!(stringify_boxed_error(e), ".[0]: missing field `reference_answer` at line 2 column 14");
             } else {
                 assert!(false);
             }
@@ -508,12 +426,12 @@ mod tests {
             let exercises = parse_exercises(
                 &Path::new("sample_files")
                     .join("invalid")
-                    .join("second_missing_source.txt")
+                    .join("second_missing_source.yaml")
             );
             assert!(exercises.is_err());
 
             if let Err(e) = exercises {
-                assert_eq!(stringify_boxed_error(e), "Expected file to end with a reference answer.");
+                assert_eq!(stringify_boxed_error(e), ".[1]: missing field `source` at line 6 column 14");
             } else {
                 assert!(false);
             }
@@ -523,29 +441,13 @@ mod tests {
             let exercises = parse_exercises(
                 &Path::new("sample_files")
                     .join("invalid")
-                    .join("missing_field.txt")
+                    .join("missing_field.yaml")
             );
             assert!(exercises.is_err());
 
             if let Err(e) = exercises {
                 let err_string = stringify_boxed_error(e);
-                assert_eq!(err_string, "Expected to keep reading a description or find a source on line 2.");
-            } else {
-                assert!(false);
-            }
-        }
-        
-        {
-            let exercises = parse_exercises(
-                &Path::new("sample_files")
-                    .join("invalid")
-                    .join("only_tag.txt")
-            );
-            assert!(exercises.is_err());
-
-            if let Err(e) = exercises {
-                let err_string = stringify_boxed_error(e);
-                assert_eq!(err_string, "Description on line 1 is blank.");
+                assert_eq!(err_string, ".[0]: missing field `source` at line 2 column 14");
             } else {
                 assert!(false);
             }
@@ -555,13 +457,13 @@ mod tests {
             let exercises = parse_exercises(
                 &Path::new("sample_files")
                     .join("invalid")
-                    .join("blank_source.txt")
+                    .join("only_tag.yaml")
             );
             assert!(exercises.is_err());
 
             if let Err(e) = exercises {
                 let err_string = stringify_boxed_error(e);
-                assert_eq!(err_string, "Source on line 2 is blank.");
+                assert_eq!(err_string, "Exercise 1 has a blank or missing description.");
             } else {
                 assert!(false);
             }
@@ -571,13 +473,13 @@ mod tests {
             let exercises = parse_exercises(
                 &Path::new("sample_files")
                     .join("invalid")
-                    .join("blank_source.txt")
+                    .join("blank_source.yaml")
             );
             assert!(exercises.is_err());
 
             if let Err(e) = exercises {
                 let err_string = stringify_boxed_error(e);
-                assert_eq!(err_string, "Source on line 2 is blank.");
+                assert_eq!(err_string, "Exercise 1 has a blank or missing source.");
             } else {
                 assert!(false);
             }
@@ -587,13 +489,13 @@ mod tests {
             let exercises = parse_exercises(
                 &Path::new("sample_files")
                     .join("invalid")
-                    .join("blank_reference_answer.txt")
+                    .join("blank_reference_answer.yaml")
             );
             assert!(exercises.is_err());
 
             if let Err(e) = exercises {
                 let err_string = stringify_boxed_error(e);
-                assert_eq!(err_string, "Reference answer on line 4 is blank.");
+                assert_eq!(err_string, "Exercise 1 has a blank or missing reference answer.");
             } else {
                 assert!(false);
             }

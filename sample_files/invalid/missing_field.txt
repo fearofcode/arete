@@ -1,2 +1,0 @@
-description: foo
-reference_answer: bar

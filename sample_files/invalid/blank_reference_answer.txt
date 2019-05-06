@@ -1,4 +1,0 @@
-description: foo
-source: bar
-
-reference_answer: 
