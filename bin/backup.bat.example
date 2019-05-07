@@ -1,0 +1,2 @@
+pg_dump -d arete -U postgres -f arete_backup.sql
+copy arete_backup.sql C:\Users\warren\Dropbox\arete
