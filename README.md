@@ -11,6 +11,8 @@ In the future, there may be additional features.
 
 Arete is intended to be used for remembering what you learn about math and science.
 
+I'm happy to add more documentation and instructions if there is interest. For now, this is probably only going to be used by its creator.
+
 ## Setting up PostgreSQL on Linux
 
 To use Arete, you'll first have to install PostgreSQL if you don't already have it installed.
