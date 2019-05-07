@@ -1,3 +1,4 @@
 target/
 *.swp
 config.toml
+bin/deploy.sh
