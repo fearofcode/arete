@@ -10,11 +10,11 @@ mod horizontal_menu;
 use horizontal_menu::{HorizontalMenuOption, horizontal_menu_select};
 
 fn usage(app_name: &String) {
-    println!("Usage: {} <command> [command-param]\n", app_name);
+    println!("Usage: {} <command> [command_param]\n", app_name);
     println!("Available commands:\n");
     println!("  bootstrap_schema\tBootstrap the database schema");
     println!("  drop_schema\t\tDrop the database schema");
-    println!("  import <path>\t\tImport a file");
+    println!("  import <path> [--dry_run|-d]\t\tImport a file");
     println!("  ls\t\t\tList all exercises by due date descending");
     println!("  review\t\tReview due exercises");
 }
@@ -71,30 +71,36 @@ fn drop_schema_command() {
     println!("Database schema dropped.");
 }
 
-fn import_command(path: &String) {
+fn print_labeled_field(label: &str, s: &String) {
+    println!("{}:", label);
+    for line in s.lines() {
+        println!("  {}", line);
+    }
+}
+
+fn print_full_exercise(exercise: &Exercise) {
+    print_labeled_field("Description", &exercise.description);
+    print_labeled_field("Source", &exercise.source);
+    print_labeled_field("Reference", &exercise.reference_answer);
+}
+
+fn import_command(path: &String, dry_run: bool) {
     match parse_exercises(Path::new(path)) {
         Ok(exercises) => {
-            let conn = bootstrap_live_database_connection();
-
-            if let Err(e) = conn {
-                eprintln!("Error starting up: {}", e);
-                return;
+            if dry_run {
+                println!("Here are the exercises that would be imported:\n");
+            } else {
+                println!("Here are the exercises that are about to be imported:\n");
             }
-
-            let conn = conn.unwrap();
-
-            if !schema_is_loaded(&conn) {
-                eprintln!("Schema is not loaded. Please run bootstrap_schema.");
-                return;
-            }
-            println!("Here are the exercises that are about to be imported: ");
 
             for exercise in exercises.iter() {
-                println!("Description: {}", &exercise.description);
-                println!("Source: {}", &exercise.source);
-                println!("Reference: {}\n", &exercise.reference_answer);
+                print_full_exercise(exercise);
             }
 
+            if dry_run {
+                println!("\nExiting since this is a dry run.");
+                return;
+            }
             println!("Import all of these? [y/N]");
             let mut buffer = String::new();
             if let Err(_) = std::io::stdin().read_line(&mut buffer) {
@@ -108,6 +114,22 @@ fn import_command(path: &String) {
                 return;
             }
             
+            /* No need to connect to the database unless actually necessary */
+
+            let conn = bootstrap_live_database_connection();
+
+            if let Err(e) = conn {
+                eprintln!("Error starting up: {}", e);
+                return;
+            }
+
+            let conn = conn.unwrap();
+
+            if !schema_is_loaded(&conn) {
+                eprintln!("Schema is not loaded. Please run bootstrap_schema.");
+                return;
+            }
+
             if let Err(e) = save_parsed_exercises(&exercises, &conn) {
                 eprintln!("Error saving exercises: {}", e);
                 eprintln!("The most likely cause of this is a duplicate description.");
@@ -148,15 +170,16 @@ fn ls_command() {
 
     // TODO page these the way git log does
     for exercise in exercises.iter() {
-        println!("Description: {}", &exercise.description);
-        println!("Source: {}", &exercise.source);
-        println!("Due at: {}\n", &exercise.due_at);
+        print_labeled_field("Description", &exercise.description);
+        print_labeled_field("Source", &exercise.source);
+        println!("Due at:\n  {}\n", &exercise.due_at);
     }
 }
 
 fn confirm_exercise_answer(exercise: &mut Exercise, conn: &Connection) {
-    println!("\n\nSource: {}", &exercise.source);
-    println!("Answer: {}\n", &exercise.reference_answer);
+    print!("\n\n");
+    print_labeled_field("Source", &exercise.source);
+    print_labeled_field("Reference", &exercise.reference_answer);
 
     println!("Is the answer you had in mind correct?");
 
@@ -254,8 +277,9 @@ fn review_command() {
                         if selected_index == 0 {
                             confirm_exercise_answer(exercise, &conn);
                         } else {
-                            println!("\n\nSource: {}\n", &exercise.source);
-                            println!("Answer: {}\n", &exercise.reference_answer);
+                            print!("\n\n");
+                            print_labeled_field("Source", &exercise.source);
+                            print_labeled_field("Reference", &exercise.reference_answer);
 
                             exercise.update_repetition_interval(false);
                             if let Err(e) = exercise.update(&conn) {
@@ -313,13 +337,24 @@ fn main() {
             let param = &args[2];
 
             match &command[..] {
-                "import" => import_command(&param),
+                "import" => import_command(&param, false),
                 _ => {
                     eprintln!("Unknown command '{}'", &command);
                     usage(app_name);
                 }
             }
-        }
+        },
+        4 => {
+            let command = &args[1];
+            let param = &args[2];
+            let command_option = &args[3];
+
+            if command == "import" && (command_option == "--dry_run" || command_option == "-d") {
+                import_command(&param, true);
+            } else {
+                usage(app_name);
+            }
+        },
         _ => usage(app_name)
     }
 }
