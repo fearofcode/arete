@@ -2,3 +2,6 @@ target/
 *.swp
 config.toml
 bin/deploy.sh
+bin/deploy.bat
+bin/backup.bat
+arete_backup.sql
