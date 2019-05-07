@@ -1,7 +1,15 @@
 arete
 -----
 
-flashcard WIP thing
+Arete is a simple command-line flashcard application.
+
+It works by importing YAML files containing exercises.
+
+It uses PostgreSQL to store data.
+
+In the future, there may be additional features.
+
+Arete is intended to be used for remembering what you learn about math and science.
 
 ## Setting up PostgreSQL on Linux
 
