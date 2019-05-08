@@ -4,8 +4,9 @@ use postgres::types::ToSql;
 use postgres::transaction::Transaction;
 use std::error::Error;
 use std::path::Path;
+use std::fs;
 use postgres::{Connection, TlsMode};
-use serde_derive::{Deserialize};
+use serde_derive::{Serialize, Deserialize};
 
 
 #[derive(Deserialize)]
@@ -94,6 +95,14 @@ impl PartialEq<Exercise> for Exercise {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ExportedExercise {
+    pub id: i32,
+    pub description: String,
+    pub source: String,
+    pub reference_answer: String,
+}
+
 pub const ONE_DAY: i32 = 1;
 pub const MAX_INTERVAL: i32 = ONE_DAY * 90;
 /* keep this fixed for now */
@@ -127,19 +136,65 @@ impl Exercise {
         }
     }
 
+    pub fn update_with_values(&mut self, updated_exercise: &ExportedExercise) {
+        self.description = updated_exercise.description.clone();
+        self.source = updated_exercise.source.clone();
+        self.reference_answer = updated_exercise.reference_answer.clone();
+    }
+
+    pub fn yaml_export(&self, path: &Path) -> Result<(), Box<dyn Error>> {
+        if self.id.is_none() {
+            return Err(make_error("Cannot export an exercise that has not been saved".to_string()));
+        }
+        let exported_exercise = ExportedExercise {
+            id: self.id.unwrap(),
+            description: self.description.clone(),
+            source: self.source.clone(),
+            reference_answer: self.reference_answer.clone()
+        };
+
+        let yaml_string = serde_yaml::to_string(&exported_exercise)?;
+        match fs::write(path, yaml_string) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(Box::new(e))
+        }
+    }
+
+    fn sql_column_list() -> &'static str {
+        "id, created_at, due_at, description, source, reference_answer, update_interval, 
+        consecutive_successful_reviews"
+    }
+
+    pub fn get_by_pk(pk: i32, conn: &Connection) -> Option<Exercise> {
+        let query = format!("
+        SELECT 
+            {}
+        FROM
+            exercises
+        WHERE
+            id = $1
+        ", Exercise::sql_column_list());
+
+        for row in &conn.query(&query, &[&pk]).unwrap() {
+            return Some(Exercise::new_from_row(&row));
+        }
+
+        None
+    }
+
     pub fn get_due(conn: &Connection) -> Vec<Exercise> {
         let mut exercises = vec![];
 
-        let due_query = "
+        let due_query = format!("
         SELECT 
-            id, created_at, due_at, description, source, reference_answer, update_interval, consecutive_successful_reviews
+            {}
         FROM
             exercises
         WHERE
             due_at <= $1
         ORDER BY
             due_at desc, 
-            id desc";
+            id desc", Exercise::sql_column_list());
     
         let today = todays_date();
 
@@ -156,14 +211,14 @@ impl Exercise {
     pub fn get_all_by_due_date_desc(conn: &Connection) -> Vec<Exercise> {
         let mut exercises = vec![];
 
-        let due_query = "
+        let due_query = format!("
         SELECT 
-            id, created_at, due_at, description, source, reference_answer, update_interval, consecutive_successful_reviews
+            {}
         FROM
             exercises
         ORDER BY
             due_at desc, 
-            id desc";
+            id desc", Exercise::sql_column_list());
 
         for row in &conn
             .query(&due_query, &[])
@@ -256,6 +311,10 @@ fn convert_yaml_str_to_exercises(s: &str) -> Result<Vec<ImportedExercise>, serde
     serde_yaml::from_str(s)
 }
 
+fn convert_yaml_str_to_updated_exercise(s: &str) -> Result<ExportedExercise, serde_yaml::Error> {
+    serde_yaml::from_str(s)
+}
+
 fn yaml_string_is_empty(s: &String) -> bool {
     s.trim().is_empty() || s == "~"
 }
@@ -284,8 +343,31 @@ pub fn parse_exercises(path: &Path) -> Result<Vec<Exercise>, Box<Error>> {
     }
 }
 
+pub fn parse_updated_exercise(path: &Path) -> Result<ExportedExercise, Box<Error>> {
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(e) => return Err(Box::new(e)),
+    };
+
+    match convert_yaml_str_to_updated_exercise(&content) {
+        Ok(mut exercise) => {
+            if yaml_string_is_empty(&exercise.description) {
+                return Err(make_error("Exercise has a blank or missing description.".to_string()));
+            } else if yaml_string_is_empty(&exercise.source) {
+                return Err(make_error("Exercise has a blank or missing source.".to_string()));
+            } else if yaml_string_is_empty(&exercise.reference_answer) {
+                return Err(make_error("Exercise has a blank or missing reference answer.".to_string()));
+            }
+            exercise.description = exercise.description.trim().to_string();
+            exercise.source = exercise.source.trim().to_string();
+            exercise.reference_answer = exercise.reference_answer.trim().to_string();
+            Ok(exercise)
+        }
+        Err(yaml_err) => Err(Box::new(yaml_err))
+    }
+}
+
 pub fn save_parsed_exercises(exercises: &Vec<Exercise>, conn: &Connection) -> Result<(), Box<dyn Error>> {
-    // @Robustness I don't know how to do the types to return whatever type that could be generated by the query
     let tx = conn.transaction().unwrap();
 
     for exercise in exercises {
@@ -503,6 +585,68 @@ mod tests {
     }
 
     #[test]
+    fn test_export_saved_exercise() {
+        let exercises = vec![
+            Exercise::new("foo", "bar", "baz"),
+        ];
+
+        let conn = boostrap_test_database();
+
+        save_parsed_exercises(&exercises, &conn).expect("Saving failed");
+
+        let mut saved_exercises = Exercise::get_all_by_due_date_desc(&conn);
+
+        assert_eq!(saved_exercises.len(), 1);
+
+        let saved_exercise = &mut saved_exercises[0];
+
+        let path = Path::new("id_export_test.yaml");
+
+        if path.exists() {
+            std::fs::remove_file(&path).expect("We tried to delete a file that didn't exist?");
+        }
+        saved_exercise.yaml_export(&path).expect("Failed to export");
+
+        let data = fs::read_to_string(Path::new("id_export_test.yaml")).expect("Failed to read back in");
+
+        assert!(data.contains("description: foo"));
+        assert!(data.contains("source: bar"));
+        assert!(data.contains("id: 1"));
+        assert!(data.contains("reference_answer: baz"));
+
+        // test that it overwrites existing files
+
+        saved_exercise.description = "quux".to_string();
+        saved_exercise.source = "quux 2".to_string();
+        saved_exercise.reference_answer = "quux 3".to_string();
+        saved_exercise.yaml_export(&path).expect("Failed to export");
+
+        let data = fs::read_to_string(&path).expect("Failed to read back in");
+
+        assert!(data.contains("description: quux"));
+        assert!(data.contains("source: quux 2"));
+        assert!(data.contains("id: 1"));
+        assert!(data.contains("reference_answer: quux 3"));
+        
+        // test that it imports correctly
+
+        let parsed_exercise = parse_updated_exercise(&path).expect("should not error out");
+
+        saved_exercise.update_with_values(&parsed_exercise);
+        saved_exercise.update(&conn).expect("update failed");
+
+        let saved_exercises = Exercise::get_all_by_due_date_desc(&conn);
+
+        assert_eq!(saved_exercises.len(), 1);
+
+        assert_eq!(&saved_exercises[0].description, "quux");
+
+        if path.exists() {
+            std::fs::remove_file(&path).expect("We tried to delete a file that didn't exist?");
+        }
+    }
+
+    #[test]
     fn test_save_parsed_exercises() {
         let exercises = vec![
             Exercise::new("foo", "bar", "baz"),
@@ -527,6 +671,8 @@ mod tests {
         assert_eq!(saved_exercises[0].reference_answer, "baz 2");
         assert_eq!(saved_exercises[0].update_interval, 0);
         assert_eq!(saved_exercises[0].consecutive_successful_reviews, 0);
+
+        assert_eq!(Exercise::get_by_pk(2, &conn).unwrap(), saved_exercises[0]);
 
         assert_eq!(saved_exercises[1].id, Some(1));
         assert_eq!(saved_exercises[1].created_at, today);

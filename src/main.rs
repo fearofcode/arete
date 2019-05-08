@@ -15,6 +15,10 @@ fn usage(app_name: &String) {
     println!("  bootstrap_schema\tBootstrap the database schema");
     println!("  drop_schema\t\tDrop the database schema");
     println!("  import <path> [--dry_run|-d]\t\tImport a file");
+    println!("  check <path>\t\tChecks if an input YAML is valid. Equivalent to import --dry_run.");
+    // shitty kludge feature
+    println!("  edit <id> <output_path>\t\tExport an existing exercise for later import. Placeholder feature until I implement an editor here.");
+    println!("  update <path>\t\tUpdate an existing exercise in place.");
     println!("  ls\t\t\tList all exercises by due date descending");
     println!("  review\t\tReview due exercises");
 }
@@ -24,6 +28,61 @@ fn bootstrap_live_database_connection() -> Result<Connection, Box<dyn Error>> {
     let conn = connect_to_main_database(&config)?;
 
     Ok(conn)
+}
+
+fn edit_command(pk: i32, path: &Path) {
+    let conn = bootstrap_live_database_connection();
+
+    if let Err(e) = conn {
+        eprintln!("Error starting up: {}", e);
+        return;
+    }
+
+    let conn = conn.unwrap();
+
+    match Exercise::get_by_pk(pk, &conn) {
+        Some(exercise) => {
+            if let Err(e) = exercise.yaml_export(&path) {
+                eprintln!("Error while exporting: {}", e);
+            }
+        },
+        None => {
+            eprintln!("Couldn't find exercise with ID {}.", pk);
+        }
+    }
+}
+
+fn update_exercise_from_path(path: &Path) {
+    match parse_updated_exercise(&path) {
+        Ok(updated_exercise) => {
+            let conn = bootstrap_live_database_connection();
+
+            if let Err(e) = conn {
+                eprintln!("Error starting up: {}", e);
+                return;
+            }
+
+            let conn = conn.unwrap();
+
+            match Exercise::get_by_pk(updated_exercise.id, &conn) {
+                Some(mut exercise) => {
+                    exercise.update_with_values(&updated_exercise);
+                    if let Err(e) = exercise.update(&conn) {
+                        eprintln!("Error saving updated exercise: {}", e);
+                        return;
+                    }
+
+                    println!("Exercise {} has been updated.", &exercise.id.unwrap());
+                },
+                None => {
+                    eprintln!("Exercise with ID {} does not exist", updated_exercise.id);
+                }
+            }
+        },
+        Err(e) => {
+            eprintln!("Error reading in file: {}", e);
+        }
+    }
 }
 
 fn bootstrap_schema_command() {
@@ -170,16 +229,20 @@ fn ls_command() {
 
     // TODO page these the way git log does
     for exercise in exercises.iter() {
-        print_labeled_field("Description", &exercise.description);
-        print_labeled_field("Source", &exercise.source);
+        print_full_exercise(&exercise);
+        if exercise.id.is_some() {
+            println!("ID:\n  {}", &exercise.id.unwrap());
+        } else {
+            println!("ID:\n  ???? No ID, this is a bug");
+        }
         println!("Due at:\n  {}\n", &exercise.due_at);
     }
 }
 
 fn confirm_exercise_answer(exercise: &mut Exercise, conn: &Connection) {
     print!("\n\n");
-    print_labeled_field("Source", &exercise.source);
     print_labeled_field("Reference", &exercise.reference_answer);
+    print_labeled_field("Source", &exercise.source);
 
     println!("Is the answer you had in mind correct?");
 
@@ -261,7 +324,7 @@ fn review_command() {
     clear_screen();
 
     for (i, exercise) in exercises.iter_mut().enumerate() {
-        println!("{}Exercise {}/{}{}\n", Attribute::Bold, i + 1, exercise_cnt, Attribute::Reset);
+        println!("{}Exercise {}/{} - ID {}{}\n", Attribute::Bold, i + 1, exercise_cnt, &exercise.id.unwrap_or(-1), Attribute::Reset);
 
         println!("{}\n", &exercise.description);
         
@@ -278,8 +341,8 @@ fn review_command() {
                             confirm_exercise_answer(exercise, &conn);
                         } else {
                             print!("\n\n");
-                            print_labeled_field("Source", &exercise.source);
                             print_labeled_field("Reference", &exercise.reference_answer);
+                            print_labeled_field("Source", &exercise.source);
 
                             exercise.update_repetition_interval(false);
                             if let Err(e) = exercise.update(&conn) {
@@ -326,7 +389,9 @@ fn main() {
                 "ls" => ls_command(),
                 "review" => review_command(),
                 _ => {
-                    eprintln!("Unknown command '{}'", &command);
+                    if command != "--help" && command != "-h" && command != "help" {
+                        eprintln!("Unknown command '{}'", &command);
+                    }
                     usage(app_name);
                 }
             }
@@ -338,6 +403,9 @@ fn main() {
 
             match &command[..] {
                 "import" => import_command(&param, false),
+                // check is a synonym for import --dry_run
+                "check" => import_command(&param, true),
+                "update" => update_exercise_from_path(Path::new(&param)),
                 _ => {
                     eprintln!("Unknown command '{}'", &command);
                     usage(app_name);
@@ -351,6 +419,13 @@ fn main() {
 
             if command == "import" && (command_option == "--dry_run" || command_option == "-d") {
                 import_command(&param, true);
+            } else if command == "edit" {
+                match param.parse::<i32>() {
+                    Ok(pk) => edit_command(pk, Path::new(command_option)),
+                    Err(_) => {
+                        eprintln!("Cannot convert '{}' to a primary key", param)
+                    }
+                }
             } else {
                 usage(app_name);
             }
