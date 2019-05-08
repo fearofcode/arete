@@ -20,6 +20,7 @@ fn usage(app_name: &String) {
     println!("  edit <id> <output_path>\t\tExport an existing exercise for later import. Placeholder feature until I implement an editor here.");
     println!("  update <path>\t\tUpdate an existing exercise in place.");
     println!("  ls\t\t\tList all exercises by due date descending");
+    println!("  due\t\t\tList all due exercises by due date descending");
     println!("  review\t\tReview due exercises");
 }
 
@@ -239,6 +240,42 @@ fn ls_command() {
     }
 }
 
+fn due_command() {
+    let conn = bootstrap_live_database_connection();
+
+    if let Err(e) = conn {
+        eprintln!("Error starting up: {}", e);
+        return;
+    }
+
+    let conn = conn.unwrap();
+
+    if !schema_is_loaded(&conn) {
+        eprintln!("Schema is not loaded. Please run bootstrap_schema.");
+        return;
+    }
+
+    let exercises = Exercise::get_due(&conn);
+
+    if exercises.is_empty() {
+        println!("No exercises are currently due. Run 'ls' to see exercises due later.");
+        return;
+    }
+
+    println!("{} exercises:\n", exercises.len());
+
+    // TODO page these the way git log does
+    for exercise in exercises.iter() {
+        print_full_exercise(&exercise);
+        if exercise.id.is_some() {
+            println!("ID:\n  {}", &exercise.id.unwrap());
+        } else {
+            println!("ID:\n  ???? No ID, this is a bug");
+        }
+        println!("Due at:\n  {}\n", &exercise.due_at);
+    }
+}
+
 fn confirm_exercise_answer(exercise: &mut Exercise, conn: &Connection) {
     print!("\n\n");
     print_labeled_field("Reference", &exercise.reference_answer);
@@ -387,6 +424,7 @@ fn main() {
                 "bootstrap_schema" => bootstrap_schema_command(),
                 "drop_schema" => drop_schema_command(),
                 "ls" => ls_command(),
+                "due" => due_command(),
                 "review" => review_command(),
                 _ => {
                     if command != "--help" && command != "-h" && command != "help" {
