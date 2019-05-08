@@ -144,6 +144,11 @@ fn print_full_exercise(exercise: &Exercise) {
     print_labeled_field("Reference", &exercise.reference_answer);
 }
 
+fn print_partial_exercise(exercise: &Exercise) {
+    print_labeled_field("Description", &exercise.description);
+    print_labeled_field("Source", &exercise.source);
+}
+
 fn import_command(path: &String, dry_run: bool) {
     match parse_exercises(Path::new(path)) {
         Ok(exercises) => {
@@ -266,7 +271,7 @@ fn due_command() {
 
     // TODO page these the way git log does
     for exercise in exercises.iter() {
-        print_full_exercise(&exercise);
+        print_partial_exercise(&exercise);
         if exercise.id.is_some() {
             println!("ID:\n  {}", &exercise.id.unwrap());
         } else {
