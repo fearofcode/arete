@@ -13,6 +13,13 @@ Arete is intended to be used for remembering what you learn about math and scien
 
 I'm happy to add more documentation and instructions if there is interest. For now, this is probably only going to be used by its creator.
 
+I've experimented with many different languages and frameworks to implement this product in. All of
+them have serious drawbacks, so for now, I'm going command-line only, which makes things like
+displaying images impossible, and makes things like editing multi-line values awkward.
+
+To be honest, I just made this public so I have something to pin other than my old Java stock prediction
+app that never really worked and has horrible code I'm incredibly embarrassed by.
+
 ## Setting up PostgreSQL on Linux
 
 To use Arete, you'll first have to install PostgreSQL if you don't already have it installed.
