@@ -12,16 +12,16 @@ use horizontal_menu::{HorizontalMenuOption, horizontal_menu_select};
 fn usage(app_name: &String) {
     println!("Usage: {} <command> [command_param]\n", app_name);
     println!("Available commands:\n");
-    println!("  bootstrap_schema\tBootstrap the database schema");
-    println!("  drop_schema\t\tDrop the database schema");
-    println!("  import <path> [--dry_run|-d]\t\tImport a file");
-    println!("  check <path>\t\tChecks if an input YAML is valid. Equivalent to import --dry_run.");
+    println!("  bootstrap_schema\t\tBootstrap the database schema. Run this first.");
+    println!("  drop_schema\t\t\tDrop the database schema. Normally not needed.");
+    println!("  import <path> [--dry_run|-d]\tImport a file.");
+    println!("  check <path>\t\t\tChecks if an input YAML is valid. Equivalent to import --dry_run.");
     // shitty kludge feature
-    println!("  edit <id> <output_path>\t\tExport an existing exercise for later import. Placeholder feature until I implement an editor here.");
-    println!("  update <path>\t\tUpdate an existing exercise in place.");
-    println!("  ls\t\t\tList all exercises by due date descending");
-    println!("  due\t\t\tList all due exercises by due date descending");
-    println!("  review\t\tReview due exercises");
+    println!("  edit <id> <output_path>\tExport an existing exercise for later import. Placeholder feature until I implement an editor here.");
+    println!("  update <path>\t\t\tUpdate an existing exercise in place.");
+    println!("  ls\t\t\t\tList all exercises by due date descending.");
+    println!("  due\t\t\t\tList all due exercises by due date descending.");
+    println!("  review\t\t\tReview due exercises. The main thing this application is meant to do.");
 }
 
 fn bootstrap_live_database_connection() -> Result<Connection, Box<dyn Error>> {

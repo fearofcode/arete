@@ -22,7 +22,7 @@ app that never really worked and has horrible code I'm incredibly embarrassed by
 
 ## Setting up PostgreSQL on Linux
 
-To use Arete, you'll first have to install PostgreSQL if you don't already have it installed.
+This is mostly a reminder for myself for when setting this up on a VPS.
 
 This is a simple setup where you'll be using the databases with your current account. Adjust any Postgres setup however you like.
 
@@ -41,4 +41,4 @@ $ createdb -O `whoami` arete_test
 
 - Copy `config.toml.template` to `config.toml`
 - Fill in the values appropriately
-- Build the app, run `bootstrap_schema`, then `import` files, then `review` them
+- Type `arete` for usage
