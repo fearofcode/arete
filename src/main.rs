@@ -19,6 +19,7 @@ fn usage(app_name: &String) {
     // shitty kludge feature
     println!("  edit <id> <output_path>\tExport an existing exercise for later import. Placeholder feature until I implement an editor here.");
     println!("  update <path>\t\t\tUpdate an existing exercise in place.");
+    println!("  count\t\t\t\tCount exercises.");
     println!("  ls\t\t\t\tList all exercises by due date descending.");
     println!("  due\t\t\t\tList all due exercises by due date descending.");
     println!("  review\t\t\tReview due exercises. The main thing this application is meant to do.");
@@ -207,6 +208,30 @@ fn import_command(path: &String, dry_run: bool) {
             eprintln!("Error parsing {}: {}", path, e);
         }
     }
+}
+
+fn count_command() {
+    let conn = bootstrap_live_database_connection();
+
+    if let Err(e) = conn {
+        eprintln!("Error starting up: {}", e);
+        return;
+    }
+
+    let conn = conn.unwrap();
+
+    if !schema_is_loaded(&conn) {
+        eprintln!("Schema is not loaded. Please run bootstrap_schema.");
+        return;
+    }
+
+    let exercises = Exercise::get_all_by_due_date_desc(&conn);
+
+    println!("{} exercises.", exercises.len());
+
+    let due = Exercise::get_due(&conn);
+
+    println!("{} exercises are currently due.\n", due.len());
 }
 
 fn ls_command() {
@@ -430,6 +455,7 @@ fn main() {
                 "drop_schema" => drop_schema_command(),
                 "ls" => ls_command(),
                 "due" => due_command(),
+                "count" => count_command(),
                 "review" => review_command(),
                 _ => {
                     if command != "--help" && command != "-h" && command != "help" {
