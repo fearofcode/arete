@@ -3,7 +3,7 @@ use postgres::rows::Row;
 use postgres::transaction::Transaction;
 use postgres::types::ToSql;
 use postgres::{Connection, TlsMode};
-use serde_derive::{Deserialize, Serialize};
+use serde_derive::Deserialize;
 use std::error::Error;
 use std::fs;
 use std::path::Path;
@@ -94,7 +94,7 @@ impl PartialEq<Exercise> for Exercise {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct ExportedExercise {
     pub id: i32,
     pub description: String,
@@ -106,6 +106,13 @@ pub const ONE_DAY: i32 = 1;
 pub const MAX_INTERVAL: i32 = ONE_DAY * 90;
 /* keep this fixed for now */
 pub const EASINESS_FACTOR: i32 = 2;
+
+fn pad_multiline_string(s: &str) -> String {
+    s.lines()
+     .map(|line| "  ".to_owned() + line)
+     .collect::<Vec<_>>()
+     .join("\n")
+}
 
 impl Exercise {
     fn new(description: &str, source: &str, reference_answer: &str) -> Exercise {
@@ -154,7 +161,25 @@ impl Exercise {
             reference_answer: self.reference_answer.clone(),
         };
 
-        let yaml_string = serde_yaml::to_string(&exported_exercise)?;
+        // we could use serde_yaml for this, but it won't print newlines nicely.
+        // since our data model is pretty simple, we can get away with just
+        // constructing the string ourselves.
+        
+        let yaml_string = format!(
+            "---
+id: {}
+description: |+
+{}
+source: |+
+{}
+reference_answer: |+
+{}
+", exported_exercise.id,
+   pad_multiline_string(&exported_exercise.description),
+   pad_multiline_string(&exported_exercise.source),
+   pad_multiline_string(&exported_exercise.reference_answer)
+        );
+
         match fs::write(path, yaml_string) {
             Ok(_) => Ok(()),
             Err(e) => Err(Box::new(e)),
@@ -206,6 +231,33 @@ impl Exercise {
         let today = todays_date();
 
         for row in &conn.query(&due_query, &[&today]).unwrap() {
+            exercises.push(Exercise::new_from_row(&row));
+        }
+
+        exercises
+    }
+
+    pub fn grep(conn: &Connection, query_string: &str) -> Vec<Exercise> {
+        let mut exercises = vec![];
+
+        let grep_query = format!(
+            "
+        SELECT 
+            {}
+        FROM
+            exercises
+        WHERE
+            description like ('%' || $1 || '%')
+            or source like ('%' || $1 || '%')
+            or reference_answer like ('%' || $1 || '%')
+            or id::text like ('%' || $1 || '%')
+        ORDER BY
+            due_at desc, 
+            id desc",
+            Exercise::sql_column_list()
+        );
+
+        for row in &conn.query(&grep_query, &[&query_string]).unwrap() {
             exercises.push(Exercise::new_from_row(&row));
         }
 
@@ -640,6 +692,55 @@ mod tests {
     }
 
     #[test]
+    fn test_pad_multiline_string() {
+        let multiline_string = "here is a line
+here is another
+and one more";
+
+        let expected = "  here is a line
+  here is another
+  and one more".to_string();
+
+        assert_eq!(pad_multiline_string(&multiline_string), expected);
+    }
+
+    #[test]
+    fn test_grepping_for_exercises() {
+        let exercises = vec![Exercise::new("foo", "bar", "baz some data here")];
+
+        let conn = boostrap_test_database();
+
+        save_parsed_exercises(&exercises, &conn).expect("Saving failed");
+
+        let saved_exercises = Exercise::get_all_by_due_date_desc(&conn);
+
+        assert_eq!(saved_exercises.len(), 1);
+
+        let saved_exercise = &saved_exercises[0];
+
+        assert_eq!(saved_exercise.id.expect("expected ID"), 1);
+
+        let search_by_description = Exercise::grep(&conn, "foo");
+        assert_eq!(search_by_description.len(), 1);
+        assert_eq!(&search_by_description[0], saved_exercise);
+
+        let search_by_source = Exercise::grep(&conn, "bar");
+        assert_eq!(search_by_source.len(), 1);
+        assert_eq!(&search_by_source[0], saved_exercise);
+
+        let search_by_reference_answer = Exercise::grep(&conn, "some data");
+        assert_eq!(search_by_reference_answer.len(), 1);
+        assert_eq!(&search_by_reference_answer[0], saved_exercise);
+
+        let search_by_id = Exercise::grep(&conn, "1");
+        assert_eq!(search_by_id.len(), 1);
+        assert_eq!(&search_by_id[0], saved_exercise);
+
+        let invalid_query = Exercise::grep(&conn, "blah");
+        assert_eq!(invalid_query.len(), 0);
+    }
+
+    #[test]
     fn test_export_saved_exercise() {
         let exercises = vec![Exercise::new("foo", "bar", "baz")];
 
@@ -663,10 +764,12 @@ mod tests {
         let data =
             fs::read_to_string(Path::new("id_export_test.yaml")).expect("Failed to read back in");
 
-        assert!(data.contains("description: foo"));
-        assert!(data.contains("source: bar"));
+        println!("here is data:");
+        println!("{}", data);
+        assert!(data.contains("description: |+\n  foo"));
+        assert!(data.contains("source: |+\n  bar"));
         assert!(data.contains("id: 1"));
-        assert!(data.contains("reference_answer: baz"));
+        assert!(data.contains("reference_answer: |+\n  baz"));
 
         // test that it overwrites existing files
 
@@ -677,10 +780,10 @@ mod tests {
 
         let data = fs::read_to_string(&path).expect("Failed to read back in");
 
-        assert!(data.contains("description: quux"));
-        assert!(data.contains("source: quux 2"));
+        assert!(data.contains("description: |+\n  quux"));
+        assert!(data.contains("source: |+\n  quux 2"));
         assert!(data.contains("id: 1"));
-        assert!(data.contains("reference_answer: quux 3"));
+        assert!(data.contains("reference_answer: |+\n  quux 3"));
 
         // test that it imports correctly
 

@@ -21,6 +21,7 @@ fn usage(app_name: &str) {
     // shitty kludge feature
     println!("  edit <id> <output_path>\tExport an existing exercise for later import. Placeholder feature until I implement an editor here.");
     println!("  update <path>\t\t\tUpdate an existing exercise in place.");
+    println!("  grep <query>\t\t\tSearch for exercises containing a string.");
     println!("  count\t\t\t\tCount exercises.");
     println!("  ls\t\t\t\tList all exercises by due date descending.");
     println!("  due\t\t\t\tList all due exercises by due date descending.");
@@ -146,6 +147,7 @@ fn print_labeled_field(label: &str, s: &str) {
 
 fn print_full_exercise(exercise: &Exercise) {
     print_labeled_field("Description", &exercise.description);
+    println!("ID:\n  {}", &exercise.id.unwrap());
     print_labeled_field("Source", &exercise.source);
     print_labeled_field("Reference", &exercise.reference_answer);
 }
@@ -153,6 +155,30 @@ fn print_full_exercise(exercise: &Exercise) {
 fn print_partial_exercise(exercise: &Exercise) {
     print_labeled_field("Description", &exercise.description);
     print_labeled_field("Source", &exercise.source);
+}
+
+fn grep_command(query: &str) {
+    let conn = bootstrap_live_database_connection();
+
+    if let Err(e) = conn {
+        eprintln!("Error starting up: {}", e);
+        return;
+    }
+
+    let conn = conn.unwrap();
+
+    println!("Searching for '{}': ", &query);
+    let results = Exercise::grep(&conn, query);
+
+    if results.len() == 0 {
+        println!("No results found.");
+    } else {
+        for result in results {
+            // TODO highlighting the matches would be nice
+            print_full_exercise(&result);
+            println!("");
+        }
+    }
 }
 
 fn import_command(path: &str, dry_run: bool) {
@@ -479,6 +505,7 @@ fn main() {
                 // check is a synonym for import --dry_run
                 "check" => import_command(&param, true),
                 "update" => update_exercise_from_path(Path::new(&param)),
+                "grep" => grep_command(&param),
                 _ => {
                     eprintln!("Unknown command '{}'", &command);
                     usage(app_name);
