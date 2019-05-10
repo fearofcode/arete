@@ -1,13 +1,12 @@
 use chrono::{Duration, Local, NaiveDate};
 use postgres::rows::Row;
-use postgres::types::ToSql;
 use postgres::transaction::Transaction;
-use std::error::Error;
-use std::path::Path;
-use std::fs;
+use postgres::types::ToSql;
 use postgres::{Connection, TlsMode};
-use serde_derive::{Serialize, Deserialize};
-
+use serde_derive::{Deserialize, Serialize};
+use std::error::Error;
+use std::fs;
+use std::path::Path;
 
 #[derive(Deserialize)]
 pub struct DbConfig {
@@ -144,19 +143,21 @@ impl Exercise {
 
     pub fn yaml_export(&self, path: &Path) -> Result<(), Box<dyn Error>> {
         if self.id.is_none() {
-            return Err(make_error("Cannot export an exercise that has not been saved".to_string()));
+            return Err(make_error(
+                "Cannot export an exercise that has not been saved".to_string(),
+            ));
         }
         let exported_exercise = ExportedExercise {
             id: self.id.unwrap(),
             description: self.description.clone(),
             source: self.source.clone(),
-            reference_answer: self.reference_answer.clone()
+            reference_answer: self.reference_answer.clone(),
         };
 
         let yaml_string = serde_yaml::to_string(&exported_exercise)?;
         match fs::write(path, yaml_string) {
             Ok(_) => Ok(()),
-            Err(e) => Err(Box::new(e))
+            Err(e) => Err(Box::new(e)),
         }
     }
 
@@ -166,14 +167,17 @@ impl Exercise {
     }
 
     pub fn get_by_pk(pk: i32, conn: &Connection) -> Option<Exercise> {
-        let query = format!("
+        let query = format!(
+            "
         SELECT 
             {}
         FROM
             exercises
         WHERE
             id = $1
-        ", Exercise::sql_column_list());
+        ",
+            Exercise::sql_column_list()
+        );
 
         for row in &conn.query(&query, &[&pk]).unwrap() {
             return Some(Exercise::new_from_row(&row));
@@ -185,7 +189,8 @@ impl Exercise {
     pub fn get_due(conn: &Connection) -> Vec<Exercise> {
         let mut exercises = vec![];
 
-        let due_query = format!("
+        let due_query = format!(
+            "
         SELECT 
             {}
         FROM
@@ -194,14 +199,13 @@ impl Exercise {
             due_at <= $1
         ORDER BY
             due_at desc, 
-            id desc", Exercise::sql_column_list());
-    
+            id desc",
+            Exercise::sql_column_list()
+        );
+
         let today = todays_date();
 
-        for row in &conn
-            .query(&due_query, &[&today])
-            .unwrap()
-        {
+        for row in &conn.query(&due_query, &[&today]).unwrap() {
             exercises.push(Exercise::new_from_row(&row));
         }
 
@@ -211,19 +215,19 @@ impl Exercise {
     pub fn get_all_by_due_date_desc(conn: &Connection) -> Vec<Exercise> {
         let mut exercises = vec![];
 
-        let due_query = format!("
+        let due_query = format!(
+            "
         SELECT 
             {}
         FROM
             exercises
         ORDER BY
             due_at desc, 
-            id desc", Exercise::sql_column_list());
+            id desc",
+            Exercise::sql_column_list()
+        );
 
-        for row in &conn
-            .query(&due_query, &[])
-            .unwrap()
-        {
+        for row in &conn.query(&due_query, &[]).unwrap() {
             exercises.push(Exercise::new_from_row(&row));
         }
 
@@ -233,7 +237,7 @@ impl Exercise {
     fn create(&self, tx: &Transaction) -> Result<u64, Box<dyn Error>> {
         // exercise was already inserted
         if self.id.is_some() {
-            return Err(make_error("Cannot insert, has PK".to_string()))
+            return Err(make_error("Cannot insert, has PK".to_string()));
         }
 
         // we can let postgres insert some defaults
@@ -250,13 +254,13 @@ impl Exercise {
         let query = "insert into exercises(created_at, due_at, description, source, reference_answer) values($1, $2, $3, $4, $5)";
         match tx.execute(query, values) {
             Ok(i) => Ok(i),
-            Err(e) => Err(Box::new(e))
+            Err(e) => Err(Box::new(e)),
         }
     }
 
     pub fn update(&mut self, conn: &Connection) -> Result<u64, Box<dyn Error>> {
         if self.id.is_none() {
-            return Err(make_error("Cannot insert, has no PK".to_string()))
+            return Err(make_error("Cannot insert, has no PK".to_string()));
         }
 
         let query = "update exercises set created_at = $1, due_at = $2, description = $3, source = $4, 
@@ -274,7 +278,7 @@ impl Exercise {
         ];
         match conn.execute(query, &values) {
             Ok(i) => Ok(i),
-            Err(e) => Err(Box::new(e))
+            Err(e) => Err(Box::new(e)),
         }
     }
 
@@ -327,16 +331,34 @@ pub fn parse_exercises(path: &Path) -> Result<Vec<Exercise>, Box<dyn Error>> {
             for (i, exercise) in exercises.iter().enumerate() {
                 let human_index = i + 1;
                 if yaml_string_is_empty(&exercise.description) {
-                    return Err(make_error(format!("Exercise {} has a blank or missing description.", human_index)));
+                    return Err(make_error(format!(
+                        "Exercise {} has a blank or missing description.",
+                        human_index
+                    )));
                 } else if yaml_string_is_empty(&exercise.source) {
-                    return Err(make_error(format!("Exercise {} has a blank or missing source.", human_index)));
+                    return Err(make_error(format!(
+                        "Exercise {} has a blank or missing source.",
+                        human_index
+                    )));
                 } else if yaml_string_is_empty(&exercise.reference_answer) {
-                    return Err(make_error(format!("Exercise {} has a blank or missing reference answer.", human_index)));
+                    return Err(make_error(format!(
+                        "Exercise {} has a blank or missing reference answer.",
+                        human_index
+                    )));
                 }
             }
-            Ok(exercises.iter().map(|e| Exercise::new(&e.description.trim(), &e.source.trim(), &e.reference_answer.trim())).collect::<Vec<_>>())
+            Ok(exercises
+                .iter()
+                .map(|e| {
+                    Exercise::new(
+                        &e.description.trim(),
+                        &e.source.trim(),
+                        &e.reference_answer.trim(),
+                    )
+                })
+                .collect::<Vec<_>>())
         }
-        Err(yaml_err) => Err(Box::new(yaml_err))
+        Err(yaml_err) => Err(Box::new(yaml_err)),
     }
 }
 
@@ -346,34 +368,43 @@ pub fn parse_updated_exercise(path: &Path) -> Result<ExportedExercise, Box<dyn E
     match convert_yaml_str_to_updated_exercise(&content) {
         Ok(mut exercise) => {
             if yaml_string_is_empty(&exercise.description) {
-                return Err(make_error("Exercise has a blank or missing description.".to_string()));
+                return Err(make_error(
+                    "Exercise has a blank or missing description.".to_string(),
+                ));
             } else if yaml_string_is_empty(&exercise.source) {
-                return Err(make_error("Exercise has a blank or missing source.".to_string()));
+                return Err(make_error(
+                    "Exercise has a blank or missing source.".to_string(),
+                ));
             } else if yaml_string_is_empty(&exercise.reference_answer) {
-                return Err(make_error("Exercise has a blank or missing reference answer.".to_string()));
+                return Err(make_error(
+                    "Exercise has a blank or missing reference answer.".to_string(),
+                ));
             }
             exercise.description = exercise.description.trim().to_string();
             exercise.source = exercise.source.trim().to_string();
             exercise.reference_answer = exercise.reference_answer.trim().to_string();
             Ok(exercise)
         }
-        Err(yaml_err) => Err(Box::new(yaml_err))
+        Err(yaml_err) => Err(Box::new(yaml_err)),
     }
 }
 
-pub fn save_parsed_exercises(exercises: &Vec<Exercise>, conn: &Connection) -> Result<(), Box<dyn Error>> {
+pub fn save_parsed_exercises(
+    exercises: &Vec<Exercise>,
+    conn: &Connection,
+) -> Result<(), Box<dyn Error>> {
     let tx = conn.transaction().unwrap();
 
     for exercise in exercises {
         // @Performance we could probably do bulk inserts but for small files it won't matter
         if let Err(e) = exercise.create(&tx) {
             // rollback will kick in
-            return Err(e)
-        } 
+            return Err(e);
+        }
     }
     match tx.commit() {
         Ok(_) => Ok(()),
-        Err(e) => Err(Box::new(e))
+        Err(e) => Err(Box::new(e)),
     }
 }
 
@@ -426,12 +457,21 @@ mod tests {
         .unwrap();
 
         assert_eq!(exercises.len(), 2);
-        assert_eq!(exercises[0].description, "foo\nmore foo\none more, should be trimmed.");
+        assert_eq!(
+            exercises[0].description,
+            "foo\nmore foo\none more, should be trimmed."
+        );
         assert_eq!(exercises[0].source, "here is a single-line source");
-        assert_eq!(exercises[0].reference_answer, "here is some more content\na tab in here");
+        assert_eq!(
+            exercises[0].reference_answer,
+            "here is some more content\na tab in here"
+        );
 
         assert_eq!(exercises[1].description, "single-line here");
-        assert_eq!(exercises[1].source, "this is multiple lines\nsee, multiple lines");
+        assert_eq!(
+            exercises[1].source,
+            "this is multiple lines\nsee, multiple lines"
+        );
         assert_eq!(exercises[1].reference_answer, "this is single-line, too");
     }
 
@@ -445,8 +485,14 @@ mod tests {
         .unwrap();
 
         assert_eq!(exercises.len(), 1);
-        assert_eq!(exercises[0].description, "Write out the Fisher-Yates shuffle.");
-        assert_eq!(exercises[0].source, "Wikipedia (https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle)");
+        assert_eq!(
+            exercises[0].description,
+            "Write out the Fisher-Yates shuffle."
+        );
+        assert_eq!(
+            exercises[0].source,
+            "Wikipedia (https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle)"
+        );
         assert_eq!(exercises[0].reference_answer, "for i from 0 to n-2 do\n  j <- random integer such that i <= j < n\n  exchange a[i] and a[j]");
     }
     #[test]
@@ -472,12 +518,15 @@ mod tests {
             let exercises = parse_exercises(
                 &Path::new("sample_files")
                     .join("invalid")
-                    .join("completely_invalid.yaml")
+                    .join("completely_invalid.yaml"),
             );
             assert!(exercises.is_err());
 
             if let Err(e) = exercises {
-                assert_eq!(stringify_boxed_error(e), "invalid type: string \"blah\", expected a sequence at line 1 column 1");
+                assert_eq!(
+                    stringify_boxed_error(e),
+                    "invalid type: string \"blah\", expected a sequence at line 1 column 1"
+                );
             } else {
                 assert!(false);
             }
@@ -487,12 +536,15 @@ mod tests {
             let exercises = parse_exercises(
                 &Path::new("sample_files")
                     .join("invalid")
-                    .join("missing_reference_answer.yaml")
+                    .join("missing_reference_answer.yaml"),
             );
             assert!(exercises.is_err());
 
             if let Err(e) = exercises {
-                assert_eq!(stringify_boxed_error(e), ".[0]: missing field `reference_answer` at line 2 column 14");
+                assert_eq!(
+                    stringify_boxed_error(e),
+                    ".[0]: missing field `reference_answer` at line 2 column 14"
+                );
             } else {
                 assert!(false);
             }
@@ -502,12 +554,15 @@ mod tests {
             let exercises = parse_exercises(
                 &Path::new("sample_files")
                     .join("invalid")
-                    .join("second_missing_source.yaml")
+                    .join("second_missing_source.yaml"),
             );
             assert!(exercises.is_err());
 
             if let Err(e) = exercises {
-                assert_eq!(stringify_boxed_error(e), ".[1]: missing field `source` at line 6 column 14");
+                assert_eq!(
+                    stringify_boxed_error(e),
+                    ".[1]: missing field `source` at line 6 column 14"
+                );
             } else {
                 assert!(false);
             }
@@ -517,13 +572,16 @@ mod tests {
             let exercises = parse_exercises(
                 &Path::new("sample_files")
                     .join("invalid")
-                    .join("missing_field.yaml")
+                    .join("missing_field.yaml"),
             );
             assert!(exercises.is_err());
 
             if let Err(e) = exercises {
                 let err_string = stringify_boxed_error(e);
-                assert_eq!(err_string, ".[0]: missing field `source` at line 2 column 14");
+                assert_eq!(
+                    err_string,
+                    ".[0]: missing field `source` at line 2 column 14"
+                );
             } else {
                 assert!(false);
             }
@@ -533,7 +591,7 @@ mod tests {
             let exercises = parse_exercises(
                 &Path::new("sample_files")
                     .join("invalid")
-                    .join("only_tag.yaml")
+                    .join("only_tag.yaml"),
             );
             assert!(exercises.is_err());
 
@@ -549,7 +607,7 @@ mod tests {
             let exercises = parse_exercises(
                 &Path::new("sample_files")
                     .join("invalid")
-                    .join("blank_source.yaml")
+                    .join("blank_source.yaml"),
             );
             assert!(exercises.is_err());
 
@@ -565,13 +623,16 @@ mod tests {
             let exercises = parse_exercises(
                 &Path::new("sample_files")
                     .join("invalid")
-                    .join("blank_reference_answer.yaml")
+                    .join("blank_reference_answer.yaml"),
             );
             assert!(exercises.is_err());
 
             if let Err(e) = exercises {
                 let err_string = stringify_boxed_error(e);
-                assert_eq!(err_string, "Exercise 1 has a blank or missing reference answer.");
+                assert_eq!(
+                    err_string,
+                    "Exercise 1 has a blank or missing reference answer."
+                );
             } else {
                 assert!(false);
             }
@@ -580,9 +641,7 @@ mod tests {
 
     #[test]
     fn test_export_saved_exercise() {
-        let exercises = vec![
-            Exercise::new("foo", "bar", "baz"),
-        ];
+        let exercises = vec![Exercise::new("foo", "bar", "baz")];
 
         let conn = boostrap_test_database();
 
@@ -601,7 +660,8 @@ mod tests {
         }
         saved_exercise.yaml_export(&path).expect("Failed to export");
 
-        let data = fs::read_to_string(Path::new("id_export_test.yaml")).expect("Failed to read back in");
+        let data =
+            fs::read_to_string(Path::new("id_export_test.yaml")).expect("Failed to read back in");
 
         assert!(data.contains("description: foo"));
         assert!(data.contains("source: bar"));
@@ -621,7 +681,7 @@ mod tests {
         assert!(data.contains("source: quux 2"));
         assert!(data.contains("id: 1"));
         assert!(data.contains("reference_answer: quux 3"));
-        
+
         // test that it imports correctly
 
         let parsed_exercise = parse_updated_exercise(&path).expect("should not error out");

@@ -1,13 +1,13 @@
 extern crate serde_derive;
-use postgres::{Connection};
+use crossterm::{terminal, Attribute, ClearType};
+use postgres::Connection;
 use std::error::Error;
 use std::path::Path;
-use crossterm::{terminal, ClearType, Attribute};
 
 use arete::*;
 
 mod horizontal_menu;
-use horizontal_menu::{HorizontalMenuOption, horizontal_menu_select};
+use horizontal_menu::{horizontal_menu_select, HorizontalMenuOption};
 
 fn usage(app_name: &String) {
     println!("Usage: {} <command> [command_param]\n", app_name);
@@ -15,7 +15,9 @@ fn usage(app_name: &String) {
     println!("  bootstrap_schema\t\tBootstrap the database schema. Run this first.");
     println!("  drop_schema\t\t\tDrop the database schema. Normally not needed.");
     println!("  import <path> [--dry_run|-d]\tImport a file.");
-    println!("  check <path>\t\t\tChecks if an input YAML is valid. Equivalent to import --dry_run.");
+    println!(
+        "  check <path>\t\t\tChecks if an input YAML is valid. Equivalent to import --dry_run."
+    );
     // shitty kludge feature
     println!("  edit <id> <output_path>\tExport an existing exercise for later import. Placeholder feature until I implement an editor here.");
     println!("  update <path>\t\t\tUpdate an existing exercise in place.");
@@ -47,7 +49,7 @@ fn edit_command(pk: i32, path: &Path) {
             if let Err(e) = exercise.yaml_export(&path) {
                 eprintln!("Error while exporting: {}", e);
             }
-        },
+        }
         None => {
             eprintln!("Couldn't find exercise with ID {}.", pk);
         }
@@ -75,12 +77,12 @@ fn update_exercise_from_path(path: &Path) {
                     }
 
                     println!("Exercise {} has been updated.", &exercise.id.unwrap());
-                },
+                }
                 None => {
                     eprintln!("Exercise with ID {} does not exist", updated_exercise.id);
                 }
             }
-        },
+        }
         Err(e) => {
             eprintln!("Error reading in file: {}", e);
         }
@@ -113,7 +115,10 @@ fn drop_schema_command() {
 
     let trimmed_input = buffer.trim();
     if trimmed_input != "drop schema" {
-        eprintln!("Got response \"{}\" but needed \"drop schema\" to proceed.", trimmed_input);
+        eprintln!(
+            "Got response \"{}\" but needed \"drop schema\" to proceed.",
+            trimmed_input
+        );
         return;
     }
 
@@ -176,10 +181,13 @@ fn import_command(path: &String, dry_run: bool) {
 
             let trimmed_input = buffer.trim();
             if trimmed_input != "y" {
-                eprintln!("Got response \"{}\" but needed \"y\" to proceed. No data was saved.", trimmed_input);
+                eprintln!(
+                    "Got response \"{}\" but needed \"y\" to proceed. No data was saved.",
+                    trimmed_input
+                );
                 return;
             }
-            
+
             /* No need to connect to the database unless actually necessary */
 
             let conn = bootstrap_live_database_connection();
@@ -203,7 +211,7 @@ fn import_command(path: &String, dry_run: bool) {
             }
 
             println!("Imported {} exercises.", exercises.len());
-        },
+        }
         Err(e) => {
             eprintln!("Error parsing {}: {}", path, e);
         }
@@ -345,13 +353,14 @@ fn confirm_exercise_answer(exercise: &mut Exercise, conn: &Connection) {
                 std::process::exit(1);
             }
         }
-
     }
 }
 
 fn print_next_exercise_input() {
     loop {
-        if let Ok(_) = horizontal_menu_select(&vec![HorizontalMenuOption::new("Next exercise", 'n')]) {
+        if let Ok(_) =
+            horizontal_menu_select(&vec![HorizontalMenuOption::new("Next exercise", 'n')])
+        {
             break;
         } else {
             std::process::exit(1);
@@ -391,10 +400,17 @@ fn review_command() {
     clear_screen();
 
     for (i, exercise) in exercises.iter_mut().enumerate() {
-        println!("{}Exercise {}/{} - ID {}{}\n", Attribute::Bold, i + 1, exercise_cnt, &exercise.id.unwrap_or(-1), Attribute::Reset);
+        println!(
+            "{}Exercise {}/{} - ID {}{}\n",
+            Attribute::Bold,
+            i + 1,
+            exercise_cnt,
+            &exercise.id.unwrap_or(-1),
+            Attribute::Reset
+        );
 
         println!("{}\n", &exercise.description);
-        
+
         let options = [
             HorizontalMenuOption::new("Know it", 'y'),
             HorizontalMenuOption::new("Don't know it", 'n'),
@@ -429,7 +445,6 @@ fn review_command() {
                     std::process::exit(1);
                 }
             }
-
         }
 
         // clear the screen if not last exercise
@@ -445,11 +460,11 @@ fn main() {
     let args = std::env::args().collect::<Vec<_>>();
 
     let app_name = &args[0];
- 
+
     match args.len() {
         2 => {
             let command = &args[1];
-            
+
             match &command[..] {
                 "bootstrap_schema" => bootstrap_schema_command(),
                 "drop_schema" => drop_schema_command(),
@@ -464,7 +479,7 @@ fn main() {
                     usage(app_name);
                 }
             }
-        },
+        }
         3 => {
             let command = &args[1];
 
@@ -480,7 +495,7 @@ fn main() {
                     usage(app_name);
                 }
             }
-        },
+        }
         4 => {
             let command = &args[1];
             let param = &args[2];
@@ -491,14 +506,12 @@ fn main() {
             } else if command == "edit" {
                 match param.parse::<i32>() {
                     Ok(pk) => edit_command(pk, Path::new(command_option)),
-                    Err(_) => {
-                        eprintln!("Cannot convert '{}' to a primary key", param)
-                    }
+                    Err(_) => eprintln!("Cannot convert '{}' to a primary key", param),
                 }
             } else {
                 usage(app_name);
             }
-        },
-        _ => usage(app_name)
+        }
+        _ => usage(app_name),
     }
 }

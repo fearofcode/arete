@@ -1,7 +1,7 @@
-use std::path::Path;
 use crossterm::{cursor, input, Attribute, InputEvent, KeyEvent, RawScreen, TerminalCursor};
 use std::io;
 use std::io::Write;
+use std::path::Path;
 
 pub struct HorizontalMenuOption<'a> {
     pub label: &'a str,
@@ -113,13 +113,19 @@ pub fn horizontal_menu_select(options: &[HorizontalMenuOption]) -> io::Result<Op
                             selected_index = max_selected_index;
                             break;
                         }
-                        KeyEvent::Char('h') | KeyEvent::Left | KeyEvent::Up | KeyEvent::Ctrl('b') => {
+                        KeyEvent::Char('h')
+                        | KeyEvent::Left
+                        | KeyEvent::Up
+                        | KeyEvent::Ctrl('b') => {
                             if selected_index >= 1 {
                                 selected_index -= 1;
                                 break;
                             }
                         }
-                        KeyEvent::Char('l') | KeyEvent::Right | KeyEvent::Down | KeyEvent::Ctrl('f') => {
+                        KeyEvent::Char('l')
+                        | KeyEvent::Right
+                        | KeyEvent::Down
+                        | KeyEvent::Ctrl('f') => {
                             if selected_index < max_selected_index {
                                 selected_index += 1;
                                 break;
