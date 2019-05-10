@@ -155,7 +155,7 @@ fn print_partial_exercise(exercise: &Exercise) {
     print_labeled_field("Source", &exercise.source);
 }
 
-fn import_command(path: &String, dry_run: bool) {
+fn import_command(path: &str, dry_run: bool) {
     match parse_exercises(Path::new(path)) {
         Ok(exercises) => {
             if dry_run {
@@ -327,38 +327,35 @@ fn confirm_exercise_answer(exercise: &mut Exercise, conn: &Connection) {
         HorizontalMenuOption::new("No", 'n'),
     ];
 
-    loop {
-        match horizontal_menu_select(&confirmation_options) {
-            Ok(result) => match result {
-                Some(selected_index) => {
-                    let was_correct = selected_index == 0;
-                    exercise.update_repetition_interval(was_correct);
-                    if let Err(e) = exercise.update(&conn) {
-                        eprintln!("\nError saving exercise: {}", e);
-                    }
+    match horizontal_menu_select(&confirmation_options) {
+        Ok(result) => match result {
+            Some(selected_index) => {
+                let was_correct = selected_index == 0;
+                exercise.update_repetition_interval(was_correct);
+                if let Err(e) = exercise.update(&conn) {
+                    eprintln!("\nError saving exercise: {}", e);
+                }
 
-                    if was_correct {
-                        println!("\n\nMarked exercise correct.\n");
-                    } else {
-                        println!("\n\nMarked exercise incorrect.\n");
-                    }
-                    break;
+                if was_correct {
+                    println!("\n\nMarked exercise correct.\n");
+                } else {
+                    println!("\n\nMarked exercise incorrect.\n");
                 }
-                None => {
-                    eprintln!("\nNo selection was made.");
-                    std::process::exit(1);
-                }
-            },
-            _ => {
-                eprintln!("\nI/O error while selecting option");
+            }
+            None => {
+                eprintln!("\nNo selection was made.");
                 std::process::exit(1);
             }
+        },
+        _ => {
+            eprintln!("\nI/O error while selecting option");
+            std::process::exit(1);
         }
     }
 }
 
 fn print_next_exercise_input() {
-    if let Err(_) = horizontal_menu_select(&[HorizontalMenuOption::new("Next exercise", 'n')]) {
+    if horizontal_menu_select(&[HorizontalMenuOption::new("Next exercise", 'n')]).is_err() {
         std::process::exit(1);
     }
 }
