@@ -166,6 +166,7 @@ fn import_command(path: &String, dry_run: bool) {
 
             for exercise in exercises.iter() {
                 print_full_exercise(exercise);
+                println!();
             }
 
             if dry_run {
