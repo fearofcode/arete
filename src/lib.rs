@@ -319,11 +319,8 @@ fn yaml_string_is_empty(s: &String) -> bool {
     s.trim().is_empty() || s == "~"
 }
 
-pub fn parse_exercises(path: &Path) -> Result<Vec<Exercise>, Box<Error>> {
-    let content = match std::fs::read_to_string(&path) {
-        Ok(c) => c,
-        Err(e) => return Err(Box::new(e)),
-    };
+pub fn parse_exercises(path: &Path) -> Result<Vec<Exercise>, Box<dyn Error>> {
+    let content = std::fs::read_to_string(&path)?;
 
     match convert_yaml_str_to_exercises(&content) {
         Ok(exercises) => {
@@ -343,11 +340,8 @@ pub fn parse_exercises(path: &Path) -> Result<Vec<Exercise>, Box<Error>> {
     }
 }
 
-pub fn parse_updated_exercise(path: &Path) -> Result<ExportedExercise, Box<Error>> {
-    let content = match std::fs::read_to_string(&path) {
-        Ok(c) => c,
-        Err(e) => return Err(Box::new(e)),
-    };
+pub fn parse_updated_exercise(path: &Path) -> Result<ExportedExercise, Box<dyn Error>> {
+    let content = std::fs::read_to_string(&path)?;
 
     match convert_yaml_str_to_updated_exercise(&content) {
         Ok(mut exercise) => {
