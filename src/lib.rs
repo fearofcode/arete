@@ -393,7 +393,7 @@ pub fn save_parsed_exercises(
     exercises: &Vec<Exercise>,
     conn: &Connection,
 ) -> Result<(), Box<dyn Error>> {
-    let tx = conn.transaction().unwrap();
+    let tx = conn.transaction()?;
 
     for exercise in exercises {
         // @Performance we could probably do bulk inserts but for small files it won't matter

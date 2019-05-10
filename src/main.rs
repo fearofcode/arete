@@ -9,7 +9,7 @@ use arete::*;
 mod horizontal_menu;
 use horizontal_menu::{horizontal_menu_select, HorizontalMenuOption};
 
-fn usage(app_name: &String) {
+fn usage(app_name: &str) {
     println!("Usage: {} <command> [command_param]\n", app_name);
     println!("Available commands:\n");
     println!("  bootstrap_schema\t\tBootstrap the database schema. Run this first.");
@@ -108,7 +108,7 @@ fn bootstrap_schema_command() {
 fn drop_schema_command() {
     eprintln!("This will irreversibly drop all data in the database! Are you sure you want to proceed? Type 'drop schema' without quotes to proceed.");
     let mut buffer = String::new();
-    if let Err(_) = std::io::stdin().read_line(&mut buffer) {
+    if std::io::stdin().read_line(&mut buffer).is_err() {
         eprintln!("Invalid response");
         return;
     }
@@ -137,7 +137,7 @@ fn drop_schema_command() {
     println!("Database schema dropped.");
 }
 
-fn print_labeled_field(label: &str, s: &String) {
+fn print_labeled_field(label: &str, s: &str) {
     println!("{}:", label);
     for line in s.lines() {
         println!("  {}", line);
@@ -175,7 +175,7 @@ fn import_command(path: &String, dry_run: bool) {
             }
             println!("Import all of these? [y/N]");
             let mut buffer = String::new();
-            if let Err(_) = std::io::stdin().read_line(&mut buffer) {
+            if std::io::stdin().read_line(&mut buffer).is_err() {
                 eprintln!("Invalid response");
                 return;
             }
@@ -358,14 +358,8 @@ fn confirm_exercise_answer(exercise: &mut Exercise, conn: &Connection) {
 }
 
 fn print_next_exercise_input() {
-    loop {
-        if let Ok(_) =
-            horizontal_menu_select(&vec![HorizontalMenuOption::new("Next exercise", 'n')])
-        {
-            break;
-        } else {
-            std::process::exit(1);
-        }
+    if let Err(_) = horizontal_menu_select(&[HorizontalMenuOption::new("Next exercise", 'n')]) {
+        std::process::exit(1);
     }
 }
 
@@ -417,34 +411,31 @@ fn review_command() {
             HorizontalMenuOption::new("Don't know it", 'n'),
         ];
 
-        loop {
-            match horizontal_menu_select(&options) {
-                Ok(result) => match result {
-                    Some(selected_index) => {
-                        if selected_index == 0 {
-                            confirm_exercise_answer(exercise, &conn);
-                        } else {
-                            print!("\n\n");
-                            print_labeled_field("Reference", &exercise.reference_answer);
-                            print_labeled_field("Source", &exercise.source);
+        match horizontal_menu_select(&options) {
+            Ok(result) => match result {
+                Some(selected_index) => {
+                    if selected_index == 0 {
+                        confirm_exercise_answer(exercise, &conn);
+                    } else {
+                        print!("\n\n");
+                        print_labeled_field("Reference", &exercise.reference_answer);
+                        print_labeled_field("Source", &exercise.source);
 
-                            exercise.update_repetition_interval(false);
-                            if let Err(e) = exercise.update(&conn) {
-                                eprintln!("Error saving exercise: {}", e);
-                            }
+                        exercise.update_repetition_interval(false);
+                        if let Err(e) = exercise.update(&conn) {
+                            eprintln!("Error saving exercise: {}", e);
                         }
-                        print_next_exercise_input();
-                        break;
                     }
-                    None => {
-                        eprintln!("\nNo selection was made.");
-                        std::process::exit(1);
-                    }
-                },
-                _ => {
-                    eprintln!("\nI/O error while selecting option");
+                    print_next_exercise_input();
+                }
+                None => {
+                    eprintln!("\nNo selection was made.");
                     std::process::exit(1);
                 }
+            },
+            _ => {
+                eprintln!("\nI/O error while selecting option");
+                std::process::exit(1);
             }
         }
 
