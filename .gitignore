@@ -4,5 +4,9 @@ config.toml
 bin/deploy.sh
 bin/deploy.bat
 bin/deploy.bat
+bin/deploy
 bin/backup.bat
+bin/backup
+bin/restore
+bin/restore.bat
 arete_backup.sql
