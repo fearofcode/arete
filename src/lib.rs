@@ -109,9 +109,9 @@ pub const EASINESS_FACTOR: i32 = 2;
 
 fn pad_multiline_string(s: &str) -> String {
     s.lines()
-     .map(|line| "  ".to_owned() + line)
-     .collect::<Vec<_>>()
-     .join("\n")
+        .map(|line| "  ".to_owned() + line)
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 impl Exercise {
@@ -164,7 +164,7 @@ impl Exercise {
         // we could use serde_yaml for this, but it won't print newlines nicely.
         // since our data model is pretty simple, we can get away with just
         // constructing the string ourselves.
-        
+
         let yaml_string = format!(
             "---
 id: {}
@@ -174,10 +174,11 @@ source: |+
 {}
 reference_answer: |+
 {}
-", exported_exercise.id,
-   pad_multiline_string(&exported_exercise.description),
-   pad_multiline_string(&exported_exercise.source),
-   pad_multiline_string(&exported_exercise.reference_answer)
+",
+            exported_exercise.id,
+            pad_multiline_string(&exported_exercise.description),
+            pad_multiline_string(&exported_exercise.source),
+            pad_multiline_string(&exported_exercise.reference_answer)
         );
 
         match fs::write(path, yaml_string) {
@@ -699,7 +700,8 @@ and one more";
 
         let expected = "  here is a line
   here is another
-  and one more".to_string();
+  and one more"
+            .to_string();
 
         assert_eq!(pad_multiline_string(&multiline_string), expected);
     }
