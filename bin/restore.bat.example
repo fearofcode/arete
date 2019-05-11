@@ -1,0 +1,1 @@
+dropdb -U postgres arete && createdb -U postgres arete && psql -U postgres -d arete -f C:\Users\warren\Dropbox\arete\arete_backup.sql
