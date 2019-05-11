@@ -147,7 +147,9 @@ fn print_labeled_field(label: &str, s: &str) {
 
 fn print_full_exercise(exercise: &Exercise) {
     print_labeled_field("Description", &exercise.description);
-    println!("ID:\n  {}", &exercise.id.unwrap());
+    if exercise.id.is_some() {
+        println!("ID:\n  {}", &exercise.id.unwrap());
+    }
     print_labeled_field("Source", &exercise.source);
     print_labeled_field("Reference", &exercise.reference_answer);
 }
@@ -296,11 +298,6 @@ fn ls_command() {
     // TODO page these the way git log does
     for exercise in exercises.iter() {
         print_full_exercise(&exercise);
-        if exercise.id.is_some() {
-            println!("ID:\n  {}", &exercise.id.unwrap());
-        } else {
-            println!("ID:\n  ???? No ID, this is a bug");
-        }
         println!("Due at:\n  {}\n", &exercise.due_at);
     }
 }
