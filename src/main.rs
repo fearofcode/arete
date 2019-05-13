@@ -1,4 +1,3 @@
-extern crate serde_derive;
 use crossterm::{terminal, Attribute, ClearType};
 use std::path::Path;
 
