@@ -8,9 +8,10 @@ use std::error::Error;
 use std::fs;
 use std::path::Path;
 
-fn todays_date() -> NaiveDate {
-    Local::today().naive_local()
-}
+pub const ONE_DAY: i32 = 1;
+pub const MAX_INTERVAL: i32 = ONE_DAY * 90;
+/* keep this fixed for now */
+pub const EASINESS_FACTOR: i32 = 2;
 
 #[derive(Debug)]
 pub struct Exercise {
@@ -24,12 +25,6 @@ pub struct Exercise {
     pub consecutive_successful_reviews: i32,
 }
 
-impl PartialEq<Exercise> for Exercise {
-    fn eq(&self, other: &Exercise) -> bool {
-        self.id == other.id
-    }
-}
-
 #[derive(Debug, Deserialize)]
 pub struct ExportedExercise {
     pub id: i32,
@@ -38,16 +33,54 @@ pub struct ExportedExercise {
     pub reference_answer: String,
 }
 
-pub const ONE_DAY: i32 = 1;
-pub const MAX_INTERVAL: i32 = ONE_DAY * 90;
-/* keep this fixed for now */
-pub const EASINESS_FACTOR: i32 = 2;
+pub struct ExerciseService {
+    conn: Connection,
+}
+
+#[derive(Deserialize)]
+struct DbConfig {
+    live_url: String,
+    #[allow(dead_code)]
+    test_url: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ImportedExercise {
+    pub description: String,
+    pub source: String,
+    pub reference_answer: String,
+}
+
+fn make_error(error_string: String) -> Box<Error> {
+    Box::new(std::io::Error::new(std::io::ErrorKind::Other, error_string))
+}
 
 fn pad_multiline_string(s: &str) -> String {
     s.lines()
         .map(|line| "  ".to_owned() + line)
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn convert_yaml_str_to_exercises(s: &str) -> Result<Vec<ImportedExercise>, serde_yaml::Error> {
+    serde_yaml::from_str(s)
+}
+
+fn convert_yaml_str_to_updated_exercise(s: &str) -> Result<ExportedExercise, serde_yaml::Error> {
+    serde_yaml::from_str(s)
+}
+
+fn yaml_string_is_empty(s: &str) -> bool {
+    s.trim().is_empty() || s == "~"
+}
+fn todays_date() -> NaiveDate {
+    Local::today().naive_local()
+}
+
+impl PartialEq<Exercise> for Exercise {
+    fn eq(&self, other: &Exercise) -> bool {
+        self.id == other.id
+    }
 }
 
 impl Exercise {
@@ -188,17 +221,6 @@ reference_answer: |+
             self.update_interval = 0;
         }
     }
-}
-
-pub struct ExerciseService {
-    conn: Connection,
-}
-
-#[derive(Deserialize)]
-pub struct DbConfig {
-    live_url: String,
-    #[allow(dead_code)]
-    test_url: String,
 }
 
 fn read_config_file() -> Result<DbConfig, Box<Error>> {
@@ -426,29 +448,6 @@ impl ExerciseService {
             Err(e) => Err(Box::new(e)),
         }
     }
-}
-
-fn make_error(error_string: String) -> Box<Error> {
-    Box::new(std::io::Error::new(std::io::ErrorKind::Other, error_string))
-}
-
-#[derive(Debug, Deserialize)]
-struct ImportedExercise {
-    pub description: String,
-    pub source: String,
-    pub reference_answer: String,
-}
-
-fn convert_yaml_str_to_exercises(s: &str) -> Result<Vec<ImportedExercise>, serde_yaml::Error> {
-    serde_yaml::from_str(s)
-}
-
-fn convert_yaml_str_to_updated_exercise(s: &str) -> Result<ExportedExercise, serde_yaml::Error> {
-    serde_yaml::from_str(s)
-}
-
-fn yaml_string_is_empty(s: &str) -> bool {
-    s.trim().is_empty() || s == "~"
 }
 
 pub fn parse_exercises(path: &Path) -> Result<Vec<Exercise>, Box<dyn Error>> {
