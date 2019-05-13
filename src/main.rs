@@ -172,13 +172,13 @@ fn grep_command(query: &str) {
     println!("Searching for '{}': ", &query);
     let results = Exercise::grep(&conn, query);
 
-    if results.len() == 0 {
+    if results.is_empty() {
         println!("No results found.");
     } else {
         for result in results {
             // TODO highlighting the matches would be nice
             print_full_exercise(&result);
-            println!("");
+            println!();
         }
     }
 }
@@ -290,7 +290,7 @@ fn count_command() {
 
     let stats = Exercise::get_exercise_stats(&conn);
 
-    if !stats.is_some() {
+    if stats.is_none() {
         println!("No exercises are loaded.");
         return;
     }

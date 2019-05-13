@@ -205,11 +205,10 @@ reference_answer: |+
             Exercise::sql_column_list()
         );
 
-        for row in &conn.query(&query, &[&pk]).unwrap() {
-            return Some(Exercise::new_from_row(&row));
+        match &conn.query(&query, &[&pk]).unwrap().iter().next() {
+            Some(row) => Some(Exercise::new_from_row(&row)),
+            None => None
         }
-
-        None
     }
 
     pub fn get_due(conn: &Connection) -> Vec<Exercise> {
@@ -282,22 +281,20 @@ reference_answer: |+
         // need the explicit ::integer cast to let rust-postgres convert the type
         let query = "select count(*)::integer, min(created_at) from exercises";
 
-        for row in &conn.query(&query, &[]).unwrap() {
-            return Some((row.get(0), row.get(1)));
+        match &conn.query(&query, &[]).unwrap().iter().next() {
+            Some(row) => Some((row.get(0), row.get(1))),
+            None => None
         }
-
-        None
     }
 
     pub fn count_due(conn: &Connection) -> Option<i32> {
         let today = todays_date();
         let query = "select count(*)::integer from exercises where due_at <= $1";
 
-        for row in &conn.query(&query, &[&today]).unwrap() {
-            return Some(row.get(0));
+        match &conn.query(&query, &[&today]).unwrap().iter().next() {
+            Some(row) => Some(row.get(0)),
+            None => None
         }
-
-        None
     }
 
     pub fn get_all_by_due_date_desc(conn: &Connection) -> Vec<Exercise> {
@@ -380,7 +377,7 @@ reference_answer: |+
                 _ => std::cmp::min(MAX_INTERVAL, self.update_interval * EASINESS_FACTOR),
             };
 
-            self.due_at = self.due_at + Duration::days(self.update_interval as i64);
+            self.due_at += Duration::days(i64::from(self.update_interval));
         } else {
             self.consecutive_successful_reviews = 0;
             self.update_interval = 0;
@@ -407,7 +404,7 @@ fn convert_yaml_str_to_updated_exercise(s: &str) -> Result<ExportedExercise, ser
     serde_yaml::from_str(s)
 }
 
-fn yaml_string_is_empty(s: &String) -> bool {
+fn yaml_string_is_empty(s: &str) -> bool {
     s.trim().is_empty() || s == "~"
 }
 
@@ -478,7 +475,7 @@ pub fn parse_updated_exercise(path: &Path) -> Result<ExportedExercise, Box<dyn E
 }
 
 pub fn save_parsed_exercises(
-    exercises: &Vec<Exercise>,
+    exercises: &[Exercise],
     conn: &Connection,
 ) -> Result<(), Box<dyn Error>> {
     let tx = conn.transaction()?;
