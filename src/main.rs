@@ -24,7 +24,7 @@ fn usage(app_name: &str) {
     println!("  count\t\t\t\tCount exercises.");
     println!("  ls\t\t\t\tList all exercises by due date descending.");
     println!("  due\t\t\t\tList all due exercises by due date descending.");
-    println!("  schedule\t\t\t\tList dates when exercises will be due.");
+    println!("  schedule\t\t\tList dates when exercises will be due.");
     println!("  review\t\t\tReview due exercises. The main thing this application is meant to do.");
 }
 
