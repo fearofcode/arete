@@ -73,8 +73,21 @@ fn convert_yaml_str_to_updated_exercise(s: &str) -> Result<ExportedExercise, ser
 fn yaml_string_is_empty(s: &str) -> bool {
     s.trim().is_empty() || s == "~"
 }
+
 fn todays_date() -> NaiveDate {
     Local::today().naive_local()
+}
+
+fn read_config_file() -> Result<DbConfig, Box<Error>> {
+    let config_str = std::fs::read_to_string("config.toml")?;
+
+    match toml::from_str(&config_str) {
+        Ok(toml) => {
+            let config: DbConfig = toml;
+            Ok(config)
+        }
+        Err(e) => Err(Box::new(e)),
+    }
 }
 
 impl PartialEq<Exercise> for Exercise {
@@ -220,18 +233,6 @@ reference_answer: |+
             self.consecutive_successful_reviews = 0;
             self.update_interval = 0;
         }
-    }
-}
-
-fn read_config_file() -> Result<DbConfig, Box<Error>> {
-    let config_str = std::fs::read_to_string("config.toml")?;
-
-    match toml::from_str(&config_str) {
-        Ok(toml) => {
-            let config: DbConfig = toml;
-            Ok(config)
-        }
-        Err(e) => Err(Box::new(e)),
     }
 }
 
