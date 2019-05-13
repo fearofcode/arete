@@ -262,13 +262,20 @@ fn count_command() {
         return;
     }
 
-    let exercises = Exercise::get_all_by_due_date_desc(&conn);
+    let stats = Exercise::get_exercise_stats(&conn);
 
-    println!("{} exercises.", exercises.len());
+    if !stats.is_some() {
+        println!("No exercises are loaded.");
+        return;
+    }
 
-    let due = Exercise::get_due(&conn);
+    let (exercise_cnt, earliest_exercise) = stats.unwrap();
 
-    println!("{} exercises are currently due.\n", due.len());
+    println!("{} exercises. Earliest exercise created {}.", exercise_cnt, earliest_exercise);
+
+    let due_cnt = Exercise::count_due(&conn).unwrap_or(0);
+    
+    println!("{} exercises are currently due.\n", due_cnt);
 }
 
 fn ls_command() {

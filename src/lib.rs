@@ -265,6 +265,28 @@ reference_answer: |+
         exercises
     }
 
+    pub fn get_exercise_stats(conn: &Connection) -> Option<(i32, NaiveDate)> {
+        // need the explicit ::integer cast to let rust-postgres convert the type
+        let query = "select count(*)::integer, min(created_at) from exercises";
+
+        for row in &conn.query(&query, &[]).unwrap() {
+            return Some((row.get(0), row.get(1)));
+        }
+        
+        None
+    }
+
+    pub fn count_due(conn: &Connection) -> Option<i32> {
+        let today = todays_date();
+        let query = "select count(*)::integer from exercises where due_at <= $1";
+
+        for row in &conn.query(&query, &[&today]).unwrap() {
+            return Some(row.get(0));
+        }
+        
+        None
+    }
+
     pub fn get_all_by_due_date_desc(conn: &Connection) -> Vec<Exercise> {
         let mut exercises = vec![];
 
@@ -816,11 +838,15 @@ and one more";
 
         save_parsed_exercises(&exercises, &conn).unwrap();
 
+        let today = todays_date();
+
+        assert_eq!(Exercise::get_exercise_stats(&conn), Some((2, today)));
+        assert_eq!(Exercise::count_due(&conn), Some(2));
+
         let mut saved_exercises = Exercise::get_all_by_due_date_desc(&conn);
 
         assert_eq!(saved_exercises.len(), 2);
 
-        let today = todays_date();
 
         assert_eq!(saved_exercises[0].id, Some(2));
         assert_eq!(saved_exercises[0].created_at, today);
@@ -847,8 +873,9 @@ and one more";
         assert!(first_exercise.update(&conn).is_ok());
 
         let due = Exercise::get_due(&conn);
-
+        assert_eq!(due.len(), 1);
         assert_eq!(due[0], saved_exercises[1]);
+        assert_eq!(Exercise::count_due(&conn), Some(1));
     }
 
     #[test]

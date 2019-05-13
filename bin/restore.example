@@ -3,7 +3,8 @@
 read -r -p "This will destroy the local database. Are you sure? [y/N] " response
 case $response in
     [yY][eE][sS]|[yY])
-        dropdb arete && createdb arete && psql -d arete -f ~/Dropbox/arete/arete_backup.sql
+        cp /Users/warren/Dropbox/arete/arete_backup.sql arete_backup.sql
+        dropdb -U postgres arete && createdb -U postgres arete && psql -U postgres -d arete -f arete_backup.sql
         ;;
     *)
         echo "Exiting."
