@@ -258,7 +258,8 @@ impl ExerciseService {
     }
 
     pub fn drop_schema(&self) -> postgres::Result<u64> {
-        self.conn.execute("drop table if exists exercises cascade", &[])
+        self.conn
+            .execute("drop table if exists exercises cascade", &[])
     }
 
     pub fn schema_is_loaded(&self) -> bool {
@@ -298,7 +299,7 @@ impl ExerciseService {
 
         match &self.conn.query(&query, &[&pk]).unwrap().iter().next() {
             Some(row) => Some(Exercise::new_from_row(&row)),
-            None => None
+            None => None,
         }
     }
 
@@ -374,7 +375,7 @@ impl ExerciseService {
 
         match &self.conn.query(&query, &[]).unwrap().iter().next() {
             Some(row) => Some((row.get(0), row.get(1))),
-            None => None
+            None => None,
         }
     }
 
@@ -384,7 +385,7 @@ impl ExerciseService {
 
         match &self.conn.query(&query, &[&today]).unwrap().iter().next() {
             Some(row) => Some(row.get(0)),
-            None => None
+            None => None,
         }
     }
 
@@ -410,10 +411,7 @@ impl ExerciseService {
         exercises
     }
 
-    pub fn save_parsed_exercises(
-        &self,
-        exercises: &[Exercise],
-    ) -> Result<(), Box<dyn Error>> {
+    pub fn save_parsed_exercises(&self, exercises: &[Exercise]) -> Result<(), Box<dyn Error>> {
         let tx = self.conn.transaction()?;
 
         for exercise in exercises {
@@ -428,8 +426,6 @@ impl ExerciseService {
             Err(e) => Err(Box::new(e)),
         }
     }
-
-
 }
 
 fn make_error(error_string: String) -> Box<Error> {
@@ -759,7 +755,9 @@ and one more";
 
         let service = ExerciseService::new_test();
 
-        service.save_parsed_exercises(&exercises).expect("Saving failed");
+        service
+            .save_parsed_exercises(&exercises)
+            .expect("Saving failed");
 
         let saved_exercises = service.get_all_by_due_date_desc();
 
@@ -795,7 +793,9 @@ and one more";
 
         let service = ExerciseService::new_test();
 
-        service.save_parsed_exercises(&exercises).expect("Saving failed");
+        service
+            .save_parsed_exercises(&exercises)
+            .expect("Saving failed");
 
         let mut saved_exercises = service.get_all_by_due_date_desc();
 
@@ -1043,7 +1043,9 @@ and one more";
 
         let other_exercise = Exercise::new("quux", "bar", "baz");
 
-        service.save_parsed_exercises(&vec![other_exercise]).unwrap();
+        service
+            .save_parsed_exercises(&vec![other_exercise])
+            .unwrap();
 
         let schedule = service.get_schedule();
 
