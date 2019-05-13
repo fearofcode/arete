@@ -1,7 +1,5 @@
 extern crate serde_derive;
 use crossterm::{terminal, Attribute, ClearType};
-use postgres::Connection;
-use std::error::Error;
 use std::path::Path;
 
 use arete::*;
@@ -28,24 +26,15 @@ fn usage(app_name: &str) {
     println!("  review\t\t\tReview due exercises. The main thing this application is meant to do.");
 }
 
-fn bootstrap_live_database_connection() -> Result<Connection, Box<dyn Error>> {
-    let config = read_config_file()?;
-    let conn = connect_to_main_database(&config)?;
-
-    Ok(conn)
-}
-
 fn edit_command(pk: i32, path: &Path) {
-    let conn = bootstrap_live_database_connection();
+    let service = ExerciseService::new_live();
 
-    if let Err(e) = conn {
+    if let Err(e) = service {
         eprintln!("Error starting up: {}", e);
         return;
     }
 
-    let conn = conn.unwrap();
-
-    match Exercise::get_by_pk(pk, &conn) {
+    match service.unwrap().get_by_pk(pk) {
         Some(exercise) => {
             if let Err(e) = exercise.yaml_export(&path) {
                 eprintln!("Error while exporting: {}", e);
@@ -60,19 +49,19 @@ fn edit_command(pk: i32, path: &Path) {
 fn update_exercise_from_path(path: &Path) {
     match parse_updated_exercise(&path) {
         Ok(updated_exercise) => {
-            let conn = bootstrap_live_database_connection();
+            let service = ExerciseService::new_live();
 
-            if let Err(e) = conn {
+            if let Err(e) = service {
                 eprintln!("Error starting up: {}", e);
                 return;
             }
 
-            let conn = conn.unwrap();
+            let service = service.unwrap();
 
-            match Exercise::get_by_pk(updated_exercise.id, &conn) {
+            match service.get_by_pk(updated_exercise.id) {
                 Some(mut exercise) => {
                     exercise.update_with_values(&updated_exercise);
-                    if let Err(e) = exercise.update(&conn) {
+                    if let Err(e) = exercise.update(&service) {
                         eprintln!("Error saving updated exercise: {}", e);
                         return;
                     }
@@ -91,14 +80,16 @@ fn update_exercise_from_path(path: &Path) {
 }
 
 fn bootstrap_schema_command() {
-    let conn = bootstrap_live_database_connection();
+    let service = ExerciseService::new_live();
 
-    if let Err(e) = conn {
+    if let Err(e) = service {
         eprintln!("Error starting up: {}", e);
         return;
     }
 
-    if let Err(e) = bootstrap_schema(&conn.unwrap()) {
+    let service = service.unwrap();
+
+    if let Err(e) = service.bootstrap_schema() {
         eprintln!("Error bootstrapping database: {}", e);
         return;
     }
@@ -123,14 +114,16 @@ fn drop_schema_command() {
         return;
     }
 
-    let conn = bootstrap_live_database_connection();
+    let service = ExerciseService::new_live();
 
-    if let Err(e) = conn {
+    if let Err(e) = service {
         eprintln!("Error starting up: {}", e);
         return;
     }
 
-    if let Err(e) = drop_schema(&conn.unwrap()) {
+    let service = service.unwrap();
+
+    if let Err(e) = service.drop_schema() {
         eprintln!("Error dropping database: {}", e);
         return;
     }
@@ -160,17 +153,17 @@ fn print_partial_exercise(exercise: &Exercise) {
 }
 
 fn grep_command(query: &str) {
-    let conn = bootstrap_live_database_connection();
+    let service = ExerciseService::new_live();
 
-    if let Err(e) = conn {
+    if let Err(e) = service {
         eprintln!("Error starting up: {}", e);
         return;
     }
 
-    let conn = conn.unwrap();
+    let service = service.unwrap();
 
     println!("Searching for '{}': ", &query);
-    let results = Exercise::grep(&conn, query);
+    let results = service.grep(query);
 
     if results.is_empty() {
         println!("No results found.");
@@ -219,21 +212,21 @@ fn import_command(path: &str, dry_run: bool) {
 
             /* No need to connect to the database unless actually necessary */
 
-            let conn = bootstrap_live_database_connection();
+            let service = ExerciseService::new_live();
 
-            if let Err(e) = conn {
+            if let Err(e) = service {
                 eprintln!("Error starting up: {}", e);
                 return;
             }
 
-            let conn = conn.unwrap();
+            let service = service.unwrap();
 
-            if !schema_is_loaded(&conn) {
+            if !service.schema_is_loaded() {
                 eprintln!("Schema is not loaded. Please run bootstrap_schema.");
                 return;
             }
 
-            if let Err(e) = save_parsed_exercises(&exercises, &conn) {
+            if let Err(e) = service.save_parsed_exercises(&exercises) {
                 eprintln!("Error saving exercises: {}", e);
                 eprintln!("The most likely cause of this is a duplicate description.");
                 return;
@@ -248,21 +241,21 @@ fn import_command(path: &str, dry_run: bool) {
 }
 
 fn schedule_command() {
-    let conn = bootstrap_live_database_connection();
+    let service = ExerciseService::new_live();
 
-    if let Err(e) = conn {
+    if let Err(e) = service {
         eprintln!("Error starting up: {}", e);
         return;
     }
 
-    let conn = conn.unwrap();
+    let service = service.unwrap();
 
-    if !schema_is_loaded(&conn) {
+    if !service.schema_is_loaded() {
         eprintln!("Schema is not loaded. Please run bootstrap_schema.");
         return;
     }
 
-    let schedule = Exercise::get_schedule(&conn);
+    let schedule = service.get_schedule();
 
     if schedule.is_empty() {
         println!("No exercises are loaded.");
@@ -274,21 +267,21 @@ fn schedule_command() {
 }
 
 fn count_command() {
-    let conn = bootstrap_live_database_connection();
+    let service = ExerciseService::new_live();
 
-    if let Err(e) = conn {
+    if let Err(e) = service {
         eprintln!("Error starting up: {}", e);
         return;
     }
 
-    let conn = conn.unwrap();
+    let service = service.unwrap();
 
-    if !schema_is_loaded(&conn) {
+    if !service.schema_is_loaded() {
         eprintln!("Schema is not loaded. Please run bootstrap_schema.");
         return;
     }
 
-    let stats = Exercise::get_exercise_stats(&conn);
+    let stats = service.get_exercise_stats();
 
     if stats.is_none() {
         println!("No exercises are loaded.");
@@ -302,27 +295,27 @@ fn count_command() {
         exercise_cnt, earliest_exercise
     );
 
-    let due_cnt = Exercise::count_due(&conn).unwrap_or(0);
+    let due_cnt = service.count_due().unwrap_or(0);
 
     println!("{} exercises are currently due.\n", due_cnt);
 }
 
 fn ls_command() {
-    let conn = bootstrap_live_database_connection();
+    let service = ExerciseService::new_live();
 
-    if let Err(e) = conn {
+    if let Err(e) = service {
         eprintln!("Error starting up: {}", e);
         return;
     }
 
-    let conn = conn.unwrap();
+    let service = service.unwrap();
 
-    if !schema_is_loaded(&conn) {
+    if !service.schema_is_loaded() {
         eprintln!("Schema is not loaded. Please run bootstrap_schema.");
         return;
     }
 
-    let exercises = Exercise::get_all_by_due_date_desc(&conn);
+    let exercises = service.get_all_by_due_date_desc();
 
     if exercises.is_empty() {
         println!("No exercises loaded.");
@@ -339,21 +332,21 @@ fn ls_command() {
 }
 
 fn due_command() {
-    let conn = bootstrap_live_database_connection();
+    let service = ExerciseService::new_live();
 
-    if let Err(e) = conn {
+    if let Err(e) = service {
         eprintln!("Error starting up: {}", e);
         return;
     }
 
-    let conn = conn.unwrap();
+    let service = service.unwrap();
 
-    if !schema_is_loaded(&conn) {
+    if !service.schema_is_loaded() {
         eprintln!("Schema is not loaded. Please run bootstrap_schema.");
         return;
     }
 
-    let exercises = Exercise::get_due(&conn);
+    let exercises = service.get_due();
 
     if exercises.is_empty() {
         println!("No exercises are currently due. Run 'ls' to see exercises due later.");
@@ -374,7 +367,7 @@ fn due_command() {
     }
 }
 
-fn confirm_exercise_answer(exercise: &mut Exercise, conn: &Connection) {
+fn confirm_exercise_answer(exercise: &mut Exercise, service: &ExerciseService) {
     print!("\n\n");
     print_labeled_field("Reference", &exercise.reference_answer);
     print_labeled_field("Source", &exercise.source);
@@ -391,7 +384,7 @@ fn confirm_exercise_answer(exercise: &mut Exercise, conn: &Connection) {
             Some(selected_index) => {
                 let was_correct = selected_index == 0;
                 exercise.update_repetition_interval(was_correct);
-                if let Err(e) = exercise.update(&conn) {
+                if let Err(e) = exercise.update(&service) {
                     eprintln!("\nError saving exercise: {}", e);
                 }
 
@@ -425,21 +418,21 @@ fn clear_screen() {
 }
 
 fn review_command() {
-    let conn = bootstrap_live_database_connection();
+    let service = ExerciseService::new_live();
 
-    if let Err(e) = conn {
+    if let Err(e) = service {
         eprintln!("Error starting up: {}", e);
         return;
     }
 
-    let conn = conn.unwrap();
+    let service = service.unwrap();
 
-    if !schema_is_loaded(&conn) {
+    if !service.schema_is_loaded() {
         eprintln!("Schema is not loaded. Please run bootstrap_schema.");
         return;
     }
 
-    let mut exercises = Exercise::get_due(&conn);
+    let mut exercises = service.get_due();
 
     if exercises.is_empty() {
         println!("No exercises are due.");
@@ -471,14 +464,14 @@ fn review_command() {
             Ok(result) => match result {
                 Some(selected_index) => {
                     if selected_index == 0 {
-                        confirm_exercise_answer(exercise, &conn);
+                        confirm_exercise_answer(exercise, &service);
                     } else {
                         print!("\n\n");
                         print_labeled_field("Reference", &exercise.reference_answer);
                         print_labeled_field("Source", &exercise.source);
 
                         exercise.update_repetition_interval(false);
-                        if let Err(e) = exercise.update(&conn) {
+                        if let Err(e) = exercise.update(&service) {
                             eprintln!("Error saving exercise: {}", e);
                         }
                     }

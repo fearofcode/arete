@@ -8,70 +8,6 @@ use std::error::Error;
 use std::fs;
 use std::path::Path;
 
-#[derive(Deserialize)]
-pub struct DbConfig {
-    live_url: String,
-    #[allow(dead_code)]
-    test_url: String,
-}
-
-pub fn read_config_file() -> Result<DbConfig, Box<Error>> {
-    let config_str = std::fs::read_to_string("config.toml")?;
-
-    match toml::from_str(&config_str) {
-        Ok(toml) => {
-            let config: DbConfig = toml;
-            Ok(config)
-        }
-        Err(e) => Err(Box::new(e)),
-    }
-}
-
-pub fn connect_to_main_database(config: &DbConfig) -> postgres::Result<Connection> {
-    Connection::connect(&config.live_url[..], TlsMode::None)
-}
-
-pub fn bootstrap_schema(conn: &Connection) -> postgres::Result<u64> {
-    conn.execute(
-        "create table if not exists exercises(
-        id serial primary key,
-        created_at date not null default current_date,
-        description text unique not null,
-        source text not null,
-        reference_answer text not null,
-        due_at date not null default current_date,
-        update_interval integer not null default 0,
-        consecutive_successful_reviews integer not null default 0
-    )",
-        &[],
-    )?;
-
-    conn.execute(
-        "create index if not exists exercises_due_at on exercises(due_at)",
-        &[],
-    )
-}
-
-pub fn drop_schema(conn: &Connection) -> postgres::Result<u64> {
-    conn.execute("drop table if exists exercises cascade", &[])
-}
-
-pub fn schema_is_loaded(conn: &Connection) -> bool {
-    let query = "SELECT EXISTS (
-        SELECT 1
-        FROM   information_schema.tables 
-        WHERE  table_schema = 'public'
-        AND    table_name = 'exercises'
-    )";
-
-    match &conn.query(query, &[]).unwrap().iter().next() {
-        Some(row) => {
-            let result: bool = row.get(0);
-            result
-        }
-        None => false,
-    }
-}
 fn todays_date() -> NaiveDate {
     Local::today().naive_local()
 }
@@ -187,138 +123,7 @@ reference_answer: |+
         }
     }
 
-    fn sql_column_list() -> &'static str {
-        "id, created_at, due_at, description, source, reference_answer, update_interval, 
-        consecutive_successful_reviews"
-    }
-
-    pub fn get_by_pk(pk: i32, conn: &Connection) -> Option<Exercise> {
-        let query = format!(
-            "
-        SELECT 
-            {}
-        FROM
-            exercises
-        WHERE
-            id = $1
-        ",
-            Exercise::sql_column_list()
-        );
-
-        match &conn.query(&query, &[&pk]).unwrap().iter().next() {
-            Some(row) => Some(Exercise::new_from_row(&row)),
-            None => None
-        }
-    }
-
-    pub fn get_due(conn: &Connection) -> Vec<Exercise> {
-        let mut exercises = vec![];
-
-        let due_query = format!(
-            "
-        SELECT 
-            {}
-        FROM
-            exercises
-        WHERE
-            due_at <= $1
-        ORDER BY
-            due_at desc, 
-            id desc",
-            Exercise::sql_column_list()
-        );
-
-        let today = todays_date();
-
-        for row in &conn.query(&due_query, &[&today]).unwrap() {
-            exercises.push(Exercise::new_from_row(&row));
-        }
-
-        exercises
-    }
-
-    pub fn grep(conn: &Connection, query_string: &str) -> Vec<Exercise> {
-        let mut exercises = vec![];
-
-        let grep_query = format!(
-            "
-        SELECT 
-            {}
-        FROM
-            exercises
-        WHERE
-            description like ('%' || $1 || '%')
-            or source like ('%' || $1 || '%')
-            or reference_answer like ('%' || $1 || '%')
-            or id::text like ('%' || $1 || '%')
-        ORDER BY
-            due_at desc, 
-            id desc",
-            Exercise::sql_column_list()
-        );
-
-        for row in &conn.query(&grep_query, &[&query_string]).unwrap() {
-            exercises.push(Exercise::new_from_row(&row));
-        }
-
-        exercises
-    }
-
-    pub fn get_schedule(conn: &Connection) -> Vec<(NaiveDate, i32)> {
-        let query =
-            "select due_at, count(*)::integer from exercises group by due_at order by due_at";
-
-        let mut counts = vec![];
-
-        for row in &conn.query(&query, &[]).unwrap() {
-            counts.push((row.get(0), row.get(1)));
-        }
-
-        counts
-    }
-
-    pub fn get_exercise_stats(conn: &Connection) -> Option<(i32, NaiveDate)> {
-        // need the explicit ::integer cast to let rust-postgres convert the type
-        let query = "select count(*)::integer, min(created_at) from exercises";
-
-        match &conn.query(&query, &[]).unwrap().iter().next() {
-            Some(row) => Some((row.get(0), row.get(1))),
-            None => None
-        }
-    }
-
-    pub fn count_due(conn: &Connection) -> Option<i32> {
-        let today = todays_date();
-        let query = "select count(*)::integer from exercises where due_at <= $1";
-
-        match &conn.query(&query, &[&today]).unwrap().iter().next() {
-            Some(row) => Some(row.get(0)),
-            None => None
-        }
-    }
-
-    pub fn get_all_by_due_date_desc(conn: &Connection) -> Vec<Exercise> {
-        let mut exercises = vec![];
-
-        let due_query = format!(
-            "
-        SELECT 
-            {}
-        FROM
-            exercises
-        ORDER BY
-            due_at desc, 
-            id desc",
-            Exercise::sql_column_list()
-        );
-
-        for row in &conn.query(&due_query, &[]).unwrap() {
-            exercises.push(Exercise::new_from_row(&row));
-        }
-
-        exercises
-    }
-
+    // methods that operate on a single exercise seem reasonale to keep here rather than in ExerciseService
     fn create(&self, tx: &Transaction) -> Result<u64, Box<dyn Error>> {
         // exercise was already inserted
         if self.id.is_some() {
@@ -343,7 +148,7 @@ reference_answer: |+
         }
     }
 
-    pub fn update(&mut self, conn: &Connection) -> Result<u64, Box<dyn Error>> {
+    pub fn update(&mut self, service: &ExerciseService) -> Result<u64, Box<dyn Error>> {
         if self.id.is_none() {
             return Err(make_error("Cannot insert, has no PK".to_string()));
         }
@@ -361,7 +166,7 @@ reference_answer: |+
             &self.consecutive_successful_reviews,
             &self.id.unwrap(),
         ];
-        match conn.execute(query, &values) {
+        match service.conn.execute(query, &values) {
             Ok(i) => Ok(i),
             Err(e) => Err(Box::new(e)),
         }
@@ -383,6 +188,248 @@ reference_answer: |+
             self.update_interval = 0;
         }
     }
+}
+
+pub struct ExerciseService {
+    conn: Connection,
+}
+
+#[derive(Deserialize)]
+pub struct DbConfig {
+    live_url: String,
+    #[allow(dead_code)]
+    test_url: String,
+}
+
+fn read_config_file() -> Result<DbConfig, Box<Error>> {
+    let config_str = std::fs::read_to_string("config.toml")?;
+
+    match toml::from_str(&config_str) {
+        Ok(toml) => {
+            let config: DbConfig = toml;
+            Ok(config)
+        }
+        Err(e) => Err(Box::new(e)),
+    }
+}
+
+impl ExerciseService {
+    pub fn new_live() -> Result<ExerciseService, Box<dyn Error>> {
+        let config = read_config_file()?;
+        let conn = Connection::connect(&config.live_url[..], TlsMode::None)?;
+
+        Ok(ExerciseService { conn })
+    }
+
+    pub fn new_test() -> ExerciseService {
+        // it's OK to unwrap here because we're in a test environment and failing here is fine
+        let config = read_config_file().unwrap();
+
+        let conn = Connection::connect(config.test_url, postgres::TlsMode::None).unwrap();
+
+        let service = ExerciseService { conn };
+
+        /* handle failed test runs that didn't clean up properly */
+        service.drop_schema().unwrap();
+        service.bootstrap_schema().unwrap();
+
+        service
+    }
+
+    pub fn bootstrap_schema(&self) -> postgres::Result<u64> {
+        self.conn.execute(
+            "create table if not exists exercises(
+            id serial primary key,
+            created_at date not null default current_date,
+            description text unique not null,
+            source text not null,
+            reference_answer text not null,
+            due_at date not null default current_date,
+            update_interval integer not null default 0,
+            consecutive_successful_reviews integer not null default 0
+        )",
+            &[],
+        )?;
+
+        self.conn.execute(
+            "create index if not exists exercises_due_at on exercises(due_at)",
+            &[],
+        )
+    }
+
+    pub fn drop_schema(&self) -> postgres::Result<u64> {
+        self.conn.execute("drop table if exists exercises cascade", &[])
+    }
+
+    pub fn schema_is_loaded(&self) -> bool {
+        let query = "SELECT EXISTS (
+            SELECT 1
+            FROM   information_schema.tables 
+            WHERE  table_schema = 'public'
+            AND    table_name = 'exercises'
+        )";
+
+        match &self.conn.query(query, &[]).unwrap().iter().next() {
+            Some(row) => {
+                let result: bool = row.get(0);
+                result
+            }
+            None => false,
+        }
+    }
+
+    fn sql_column_list() -> &'static str {
+        "id, created_at, due_at, description, source, reference_answer, update_interval, 
+        consecutive_successful_reviews"
+    }
+
+    pub fn get_by_pk(&self, pk: i32) -> Option<Exercise> {
+        let query = format!(
+            "
+        SELECT 
+            {}
+        FROM
+            exercises
+        WHERE
+            id = $1
+        ",
+            ExerciseService::sql_column_list()
+        );
+
+        match &self.conn.query(&query, &[&pk]).unwrap().iter().next() {
+            Some(row) => Some(Exercise::new_from_row(&row)),
+            None => None
+        }
+    }
+
+    pub fn get_due(&self) -> Vec<Exercise> {
+        let mut exercises = vec![];
+
+        let due_query = format!(
+            "
+        SELECT 
+            {}
+        FROM
+            exercises
+        WHERE
+            due_at <= $1
+        ORDER BY
+            due_at desc, 
+            id desc",
+            ExerciseService::sql_column_list()
+        );
+
+        let today = todays_date();
+
+        for row in &self.conn.query(&due_query, &[&today]).unwrap() {
+            exercises.push(Exercise::new_from_row(&row));
+        }
+
+        exercises
+    }
+
+    pub fn grep(&self, query_string: &str) -> Vec<Exercise> {
+        let mut exercises = vec![];
+
+        let grep_query = format!(
+            "
+        SELECT 
+            {}
+        FROM
+            exercises
+        WHERE
+            description like ('%' || $1 || '%')
+            or source like ('%' || $1 || '%')
+            or reference_answer like ('%' || $1 || '%')
+            or id::text like ('%' || $1 || '%')
+        ORDER BY
+            due_at desc, 
+            id desc",
+            ExerciseService::sql_column_list()
+        );
+
+        for row in &self.conn.query(&grep_query, &[&query_string]).unwrap() {
+            exercises.push(Exercise::new_from_row(&row));
+        }
+
+        exercises
+    }
+
+    pub fn get_schedule(&self) -> Vec<(NaiveDate, i32)> {
+        let query =
+            "select due_at, count(*)::integer from exercises group by due_at order by due_at";
+
+        let mut counts = vec![];
+
+        for row in &self.conn.query(&query, &[]).unwrap() {
+            counts.push((row.get(0), row.get(1)));
+        }
+
+        counts
+    }
+
+    pub fn get_exercise_stats(&self) -> Option<(i32, NaiveDate)> {
+        // need the explicit ::integer cast to let rust-postgres convert the type
+        let query = "select count(*)::integer, min(created_at) from exercises";
+
+        match &self.conn.query(&query, &[]).unwrap().iter().next() {
+            Some(row) => Some((row.get(0), row.get(1))),
+            None => None
+        }
+    }
+
+    pub fn count_due(&self) -> Option<i32> {
+        let today = todays_date();
+        let query = "select count(*)::integer from exercises where due_at <= $1";
+
+        match &self.conn.query(&query, &[&today]).unwrap().iter().next() {
+            Some(row) => Some(row.get(0)),
+            None => None
+        }
+    }
+
+    pub fn get_all_by_due_date_desc(&self) -> Vec<Exercise> {
+        let mut exercises = vec![];
+
+        let due_query = format!(
+            "
+        SELECT 
+            {}
+        FROM
+            exercises
+        ORDER BY
+            due_at desc, 
+            id desc",
+            ExerciseService::sql_column_list()
+        );
+
+        for row in &self.conn.query(&due_query, &[]).unwrap() {
+            exercises.push(Exercise::new_from_row(&row));
+        }
+
+        exercises
+    }
+
+    pub fn save_parsed_exercises(
+        &self,
+        exercises: &[Exercise],
+    ) -> Result<(), Box<dyn Error>> {
+        let tx = self.conn.transaction()?;
+
+        for exercise in exercises {
+            // @Performance we could probably do bulk inserts but for small files it won't matter
+            if let Err(e) = exercise.create(&tx) {
+                // rollback will kick in
+                return Err(e);
+            }
+        }
+        match tx.commit() {
+            Ok(_) => Ok(()),
+            Err(e) => Err(Box::new(e)),
+        }
+    }
+
+
 }
 
 fn make_error(error_string: String) -> Box<Error> {
@@ -474,25 +521,6 @@ pub fn parse_updated_exercise(path: &Path) -> Result<ExportedExercise, Box<dyn E
     }
 }
 
-pub fn save_parsed_exercises(
-    exercises: &[Exercise],
-    conn: &Connection,
-) -> Result<(), Box<dyn Error>> {
-    let tx = conn.transaction()?;
-
-    for exercise in exercises {
-        // @Performance we could probably do bulk inserts but for small files it won't matter
-        if let Err(e) = exercise.create(&tx) {
-            // rollback will kick in
-            return Err(e);
-        }
-    }
-    match tx.commit() {
-        Ok(_) => Ok(()),
-        Err(e) => Err(Box::new(e)),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -501,35 +529,22 @@ mod tests {
         format!("{}", e)
     }
 
-    fn boostrap_test_database() -> Connection {
-        // it's OK to unwrap here because we're in a test environment and failing here is fine
-        let config = read_config_file().unwrap();
-
-        let conn = Connection::connect(config.test_url, postgres::TlsMode::None).unwrap();
-
-        /* handle failed test runs that didn't clean up properly */
-        drop_schema(&conn).unwrap();
-        bootstrap_schema(&conn).unwrap();
-
-        conn
-    }
-
     #[test]
     fn test_schema_bootstrapping_dropping_loaded() {
-        let conn = boostrap_test_database();
+        let service = ExerciseService::new_test();
 
-        assert!(schema_is_loaded(&conn));
+        assert!(service.schema_is_loaded());
 
-        drop_schema(&conn).unwrap();
+        service.drop_schema().unwrap();
 
-        assert!(!schema_is_loaded(&conn));
+        assert!(!service.schema_is_loaded());
 
-        bootstrap_schema(&conn).unwrap();
-        assert!(schema_is_loaded(&conn));
+        service.bootstrap_schema().unwrap();
+        assert!(service.schema_is_loaded());
 
-        drop_schema(&conn).unwrap();
+        service.drop_schema().unwrap();
 
-        assert!(!schema_is_loaded(&conn));
+        assert!(!service.schema_is_loaded());
     }
 
     #[test]
@@ -742,11 +757,11 @@ and one more";
     fn test_grepping_for_exercises() {
         let exercises = vec![Exercise::new("foo", "bar", "baz some data here")];
 
-        let conn = boostrap_test_database();
+        let service = ExerciseService::new_test();
 
-        save_parsed_exercises(&exercises, &conn).expect("Saving failed");
+        service.save_parsed_exercises(&exercises).expect("Saving failed");
 
-        let saved_exercises = Exercise::get_all_by_due_date_desc(&conn);
+        let saved_exercises = service.get_all_by_due_date_desc();
 
         assert_eq!(saved_exercises.len(), 1);
 
@@ -754,23 +769,23 @@ and one more";
 
         assert_eq!(saved_exercise.id.expect("expected ID"), 1);
 
-        let search_by_description = Exercise::grep(&conn, "foo");
+        let search_by_description = service.grep("foo");
         assert_eq!(search_by_description.len(), 1);
         assert_eq!(&search_by_description[0], saved_exercise);
 
-        let search_by_source = Exercise::grep(&conn, "bar");
+        let search_by_source = service.grep("bar");
         assert_eq!(search_by_source.len(), 1);
         assert_eq!(&search_by_source[0], saved_exercise);
 
-        let search_by_reference_answer = Exercise::grep(&conn, "some data");
+        let search_by_reference_answer = service.grep("some data");
         assert_eq!(search_by_reference_answer.len(), 1);
         assert_eq!(&search_by_reference_answer[0], saved_exercise);
 
-        let search_by_id = Exercise::grep(&conn, "1");
+        let search_by_id = service.grep("1");
         assert_eq!(search_by_id.len(), 1);
         assert_eq!(&search_by_id[0], saved_exercise);
 
-        let invalid_query = Exercise::grep(&conn, "blah");
+        let invalid_query = service.grep("blah");
         assert_eq!(invalid_query.len(), 0);
     }
 
@@ -778,11 +793,11 @@ and one more";
     fn test_export_saved_exercise() {
         let exercises = vec![Exercise::new("foo", "bar", "baz")];
 
-        let conn = boostrap_test_database();
+        let service = ExerciseService::new_test();
 
-        save_parsed_exercises(&exercises, &conn).expect("Saving failed");
+        service.save_parsed_exercises(&exercises).expect("Saving failed");
 
-        let mut saved_exercises = Exercise::get_all_by_due_date_desc(&conn);
+        let mut saved_exercises = service.get_all_by_due_date_desc();
 
         assert_eq!(saved_exercises.len(), 1);
 
@@ -824,9 +839,9 @@ and one more";
         let parsed_exercise = parse_updated_exercise(&path).expect("should not error out");
 
         saved_exercise.update_with_values(&parsed_exercise);
-        saved_exercise.update(&conn).expect("update failed");
+        saved_exercise.update(&service).expect("update failed");
 
-        let saved_exercises = Exercise::get_all_by_due_date_desc(&conn);
+        let saved_exercises = service.get_all_by_due_date_desc();
 
         assert_eq!(saved_exercises.len(), 1);
 
@@ -844,16 +859,16 @@ and one more";
             Exercise::new("foo 2", "bar 2", "baz 2"),
         ];
 
-        let conn = boostrap_test_database();
+        let service = ExerciseService::new_test();
 
-        save_parsed_exercises(&exercises, &conn).unwrap();
+        service.save_parsed_exercises(&exercises).unwrap();
 
         let today = todays_date();
 
-        assert_eq!(Exercise::get_exercise_stats(&conn), Some((2, today)));
-        assert_eq!(Exercise::count_due(&conn), Some(2));
+        assert_eq!(service.get_exercise_stats(), Some((2, today)));
+        assert_eq!(service.count_due(), Some(2));
 
-        let mut saved_exercises = Exercise::get_all_by_due_date_desc(&conn);
+        let mut saved_exercises = service.get_all_by_due_date_desc();
 
         assert_eq!(saved_exercises.len(), 2);
 
@@ -866,7 +881,7 @@ and one more";
         assert_eq!(saved_exercises[0].update_interval, 0);
         assert_eq!(saved_exercises[0].consecutive_successful_reviews, 0);
 
-        assert_eq!(Exercise::get_by_pk(2, &conn).unwrap(), saved_exercises[0]);
+        assert_eq!(service.get_by_pk(2).unwrap(), saved_exercises[0]);
 
         assert_eq!(saved_exercises[1].id, Some(1));
         assert_eq!(saved_exercises[1].created_at, today);
@@ -879,12 +894,12 @@ and one more";
 
         let first_exercise = &mut saved_exercises[0];
         first_exercise.due_at += Duration::days(1);
-        assert!(first_exercise.update(&conn).is_ok());
+        assert!(first_exercise.update(&service).is_ok());
 
-        let due = Exercise::get_due(&conn);
+        let due = service.get_due();
         assert_eq!(due.len(), 1);
         assert_eq!(due[0], saved_exercises[1]);
-        assert_eq!(Exercise::count_due(&conn), Some(1));
+        assert_eq!(service.count_due(), Some(1));
     }
 
     #[test]
@@ -895,8 +910,8 @@ and one more";
             Exercise::new("foo", "bar 2", "baz 2"),
         ];
 
-        let conn = boostrap_test_database();
-        let result = save_parsed_exercises(&exercises, &conn);
+        let service = ExerciseService::new_test();
+        let result = service.save_parsed_exercises(&exercises);
 
         assert!(result.is_err());
 
@@ -976,10 +991,10 @@ and one more";
     fn test_review_crud_update_process() {
         let exercise = Exercise::new("foo", "bar", "baz");
 
-        let conn = boostrap_test_database();
-        save_parsed_exercises(&vec![exercise], &conn).unwrap();
+        let service = ExerciseService::new_test();
+        service.save_parsed_exercises(&vec![exercise]).unwrap();
 
-        let mut saved_exercises = Exercise::get_all_by_due_date_desc(&conn);
+        let mut saved_exercises = service.get_all_by_due_date_desc();
 
         assert_eq!(saved_exercises.len(), 1);
 
@@ -1009,9 +1024,9 @@ and one more";
         assert_eq!(saved_exercise.update_interval, 1);
         assert_eq!(saved_exercise.consecutive_successful_reviews, 1);
 
-        saved_exercise.update(&conn).unwrap();
+        saved_exercise.update(&service).unwrap();
 
-        let saved_exercises = Exercise::get_all_by_due_date_desc(&conn);
+        let saved_exercises = service.get_all_by_due_date_desc();
 
         assert_eq!(saved_exercises.len(), 1);
 
@@ -1028,9 +1043,9 @@ and one more";
 
         let other_exercise = Exercise::new("quux", "bar", "baz");
 
-        save_parsed_exercises(&vec![other_exercise], &conn).unwrap();
+        service.save_parsed_exercises(&vec![other_exercise]).unwrap();
 
-        let schedule = Exercise::get_schedule(&conn);
+        let schedule = service.get_schedule();
 
         assert_eq!(schedule.len(), 2);
         assert_eq!(schedule[0], (today, 1));
