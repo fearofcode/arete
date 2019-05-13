@@ -266,7 +266,8 @@ reference_answer: |+
     }
 
     pub fn get_schedule(conn: &Connection) -> Vec<(NaiveDate, i32)> {
-        let query = "select due_at, count(*)::integer from exercises group by due_at order by due_at";
+        let query =
+            "select due_at, count(*)::integer from exercises group by due_at order by due_at";
 
         let mut counts = vec![];
 
@@ -284,7 +285,7 @@ reference_answer: |+
         for row in &conn.query(&query, &[]).unwrap() {
             return Some((row.get(0), row.get(1)));
         }
-        
+
         None
     }
 
@@ -295,7 +296,7 @@ reference_answer: |+
         for row in &conn.query(&query, &[&today]).unwrap() {
             return Some(row.get(0));
         }
-        
+
         None
     }
 
@@ -858,7 +859,6 @@ and one more";
         let mut saved_exercises = Exercise::get_all_by_due_date_desc(&conn);
 
         assert_eq!(saved_exercises.len(), 2);
-
 
         assert_eq!(saved_exercises[0].id, Some(2));
         assert_eq!(saved_exercises[0].created_at, today);

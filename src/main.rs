@@ -18,7 +18,6 @@ fn usage(app_name: &str) {
     println!(
         "  check <path>\t\t\tChecks if an input YAML is valid. Equivalent to import --dry_run."
     );
-    // shitty kludge feature
     println!("  edit <id> <output_path>\tExport an existing exercise for later import. Placeholder feature until I implement an editor here.");
     println!("  update <path>\t\t\tUpdate an existing exercise in place.");
     println!("  grep <query>\t\t\tSearch for exercises containing a string.");
@@ -298,10 +297,13 @@ fn count_command() {
 
     let (exercise_cnt, earliest_exercise) = stats.unwrap();
 
-    println!("{} exercises. Earliest exercise created {}.", exercise_cnt, earliest_exercise);
+    println!(
+        "{} exercises. Earliest exercise created {}.",
+        exercise_cnt, earliest_exercise
+    );
 
     let due_cnt = Exercise::count_due(&conn).unwrap_or(0);
-    
+
     println!("{} exercises are currently due.\n", due_cnt);
 }
 
