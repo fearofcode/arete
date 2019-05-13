@@ -1,5 +1,5 @@
 -
-  description: Write out the Fisher-Yates shuffle.
+  description: Write out psuedocode for the Fisher-Yates shuffle.
   source: Wikipedia (https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle)
   reference_answer: |+
     for i from 0 to n-2 do

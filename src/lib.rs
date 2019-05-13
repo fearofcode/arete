@@ -540,7 +540,7 @@ mod tests {
         assert_eq!(exercises.len(), 1);
         assert_eq!(
             exercises[0].description,
-            "Write out the Fisher-Yates shuffle."
+            "Write out psuedocode for the Fisher-Yates shuffle."
         );
         assert_eq!(
             exercises[0].source,
@@ -558,9 +558,9 @@ mod tests {
         .unwrap();
 
         assert_eq!(exercises.len(), 1);
-        assert_eq!(exercises[0].description, "A farmer with a fox, a goose, and a sack of corn needs to cross a river. The farmer has a rowboat, but there is room for only the farmer and one of his three items. Unfortunately, both the fox and the goose are hungry. The fox cannot be left alone with the goose, or the fox will eat the goose. Likewise, the goose cannot be left alone with the sack of corn, or the goose will eat the corn. How does the farmer get everything across the river?");
+        assert_eq!(exercises[0].description, "A farmer with a fox, a goose, and a sack of corn needs to cross a river.\nThe farmer has a rowboat, but there is room for only the farmer and one\nof his three items. Unfortunately, both the fox and the goose are hungry.\nThe fox cannot be left alone with the goose, or the fox will eat the\ngoose. Likewise, the goose cannot be left alone with the sack of corn, or\nthe goose will eat the corn. How does the farmer get everything across\nthe river?");
         assert_eq!(exercises[0].source, "Thinking Like A Programmer, p. 3");
-        assert_eq!(exercises[0].reference_answer, "The key is to take things back after moving them. First take the goose across, leaving the fox with the corn: (f c, g). Take the fox across. Take the goose back to the corn: (g c, f). Now we\'re home free: take the corn across and leave it with the fox. Go back, get the corn, and bring it across.\n\nThe solution here is to swap the fox and the goose once the goose has been transferred.");
+        assert_eq!(exercises[0].reference_answer, "The key is to take things back after moving them. First take the goose\nacross, leaving the fox with the corn: (f c, g). Take the fox across.\nTake the goose back to the corn: (g c, f). Now we\'re home free: take the\ncorn across and leave it with the fox. Go back, get the corn, and bring\nit across.\n\nThe solution here is to swap the fox and the goose once the goose has\nbeen transferred.");
     }
 
     #[test]

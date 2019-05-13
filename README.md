@@ -11,15 +11,6 @@ In the future, there may be additional features.
 
 Arete is intended to be used for remembering what you learn about math and science.
 
-I'm happy to add more documentation and instructions if there is interest. For now, this is probably only going to be used by its creator.
-
-I've experimented with many different languages and frameworks to implement this product in. All of
-them have serious drawbacks, so for now, I'm going command-line only, which makes things like
-displaying images impossible, and makes things like editing multi-line values awkward.
-
-To be honest, I just made this public so I have something to pin other than my old Java stock prediction
-app that never really worked and has horrible code I'm incredibly embarrassed by.
-
 ## Setting up PostgreSQL on Linux
 
 This is mostly a reminder for myself for when setting this up on a VPS.
@@ -35,6 +26,15 @@ $ sudo -u postgres createuser --interactive --pwprompt # add yourself as a postg
 # if you made yourself a superuser, these commands should work
 $ createdb -O `whoami` arete
 $ createdb -O `whoami` arete_test
+```
+
+## Installation/setup
+
+```bash
+$ git clone https://github.com/fearofcode/arete
+$ cd arete
+$ cargo build --release # this will take a minute or so
+$ cargo run --release
 ```
 
 ## And then
