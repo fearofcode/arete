@@ -25,6 +25,7 @@ fn usage(app_name: &str) {
     println!("  count\t\t\t\tCount exercises.");
     println!("  ls\t\t\t\tList all exercises by due date descending.");
     println!("  due\t\t\t\tList all due exercises by due date descending.");
+    println!("  schedule\t\t\t\tList dates when exercises will be due.");
     println!("  review\t\t\tReview due exercises. The main thing this application is meant to do.");
 }
 
@@ -244,6 +245,32 @@ fn import_command(path: &str, dry_run: bool) {
         Err(e) => {
             eprintln!("Error parsing {}: {}", path, e);
         }
+    }
+}
+
+fn schedule_command() {
+    let conn = bootstrap_live_database_connection();
+
+    if let Err(e) = conn {
+        eprintln!("Error starting up: {}", e);
+        return;
+    }
+
+    let conn = conn.unwrap();
+
+    if !schema_is_loaded(&conn) {
+        eprintln!("Schema is not loaded. Please run bootstrap_schema.");
+        return;
+    }
+
+    let schedule = Exercise::get_schedule(&conn);
+
+    if schedule.is_empty() {
+        println!("No exercises are loaded.");
+    }
+
+    for (date, count) in schedule {
+        println!("{}: {}", date, count);
     }
 }
 
@@ -490,6 +517,7 @@ fn main() {
                 "ls" => ls_command(),
                 "due" => due_command(),
                 "count" => count_command(),
+                "schedule" => schedule_command(),
                 "review" => review_command(),
                 _ => {
                     if command != "--help" && command != "-h" && command != "help" {

@@ -265,6 +265,18 @@ reference_answer: |+
         exercises
     }
 
+    pub fn get_schedule(conn: &Connection) -> Vec<(NaiveDate, i32)> {
+        let query = "select due_at, count(*)::integer from exercises group by due_at order by due_at";
+
+        let mut counts = vec![];
+
+        for row in &conn.query(&query, &[]).unwrap() {
+            counts.push((row.get(0), row.get(1)));
+        }
+
+        counts
+    }
+
     pub fn get_exercise_stats(conn: &Connection) -> Option<(i32, NaiveDate)> {
         // need the explicit ::integer cast to let rust-postgres convert the type
         let query = "select count(*)::integer, min(created_at) from exercises";
@@ -989,9 +1001,11 @@ and one more";
 
         saved_exercise.update_repetition_interval(true);
 
+        let tomorrow = today + Duration::days(1);
+
         assert_eq!(saved_exercise.id, Some(1));
         assert_eq!(saved_exercise.created_at, today);
-        assert_eq!(saved_exercise.due_at, today + Duration::days(1));
+        assert_eq!(saved_exercise.due_at, tomorrow);
         assert_eq!(saved_exercise.description, "foo");
         assert_eq!(saved_exercise.source, "bar");
         assert_eq!(saved_exercise.reference_answer, "baz");
@@ -1008,12 +1022,22 @@ and one more";
 
         assert_eq!(saved_exercise.id, Some(1));
         assert_eq!(saved_exercise.created_at, today);
-        assert_eq!(saved_exercise.due_at, today + Duration::days(1));
+        assert_eq!(saved_exercise.due_at, tomorrow);
         assert_eq!(saved_exercise.description, "foo");
         assert_eq!(saved_exercise.source, "bar");
         assert_eq!(saved_exercise.reference_answer, "baz");
         assert_eq!(saved_exercise.update_interval, 1);
         assert_eq!(saved_exercise.consecutive_successful_reviews, 1);
+
+        let other_exercise = Exercise::new("quux", "bar", "baz");
+
+        save_parsed_exercises(&vec![other_exercise], &conn).unwrap();
+
+        let schedule = Exercise::get_schedule(&conn);
+
+        assert_eq!(schedule.len(), 2);
+        assert_eq!(schedule[0], (today, 1));
+        assert_eq!(schedule[1], (tomorrow, 1));
     }
 
 }
