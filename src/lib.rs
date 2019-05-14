@@ -97,7 +97,7 @@ impl PartialEq<Exercise> for Exercise {
 }
 
 impl Exercise {
-    fn new(description: &str, source: &str, reference_answer: &str) -> Exercise {
+    pub fn new(description: &str, source: &str, reference_answer: &str) -> Exercise {
         let today = todays_date();
         Exercise {
             id: None,

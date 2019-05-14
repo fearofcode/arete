@@ -5,24 +5,26 @@ use arete::*;
 
 mod horizontal_menu;
 use horizontal_menu::{horizontal_menu_select, HorizontalMenuOption};
+mod review_session;
+use review_session::{ReviewSession, REVIEW_SESSION_TIME_BOX_DEFAULT_MINUTES};
 
 fn usage(app_name: &str) {
     println!("Usage: {} <command> [command_param]\n", app_name);
     println!("Available commands:\n");
-    println!("  bootstrap_schema\t\tBootstrap the database schema. Run this first.");
-    println!("  drop_schema\t\t\tDrop the database schema. Normally not needed.");
-    println!("  import <path> [--dry_run|-d]\tImport a file.");
+    println!("  bootstrap_schema\n\tBootstrap the database schema. Run this first.\n");
+    println!("  drop_schema\n\tDrop the database schema. Normally not needed.\n");
+    println!("  import <path> [--dry_run|-d]\n\tImport a file.\n");
     println!(
-        "  check <path>\t\t\tChecks if an input YAML is valid. Equivalent to import --dry_run."
+        "  check <path>\n\tChecks if an input YAML is valid. Equivalent to import --dry_run.\n"
     );
-    println!("  edit <id> <output_path>\tExport an existing exercise for later import. Placeholder feature until I implement an editor here.");
-    println!("  update <path>\t\t\tUpdate an existing exercise in place.");
-    println!("  grep <query>\t\t\tSearch for exercises containing a string.");
-    println!("  count\t\t\t\tCount exercises.");
-    println!("  ls\t\t\t\tList all exercises by due date descending.");
-    println!("  due\t\t\t\tList all due exercises by due date descending.");
-    println!("  schedule\t\t\tList dates when exercises will be due.");
-    println!("  review\t\t\tReview due exercises. The main thing this application is meant to do.");
+    println!("  edit <id> <output_path>\n\tExport an existing exercise for later import. Placeholder feature until I implement an editor here.\n");
+    println!("  update <path>\n\tUpdate an existing exercise in place.\n");
+    println!("  grep <query>\n\tSearch for exercises containing a string.\n");
+    println!("  count\n\tCount exercises.\n");
+    println!("  ls\n\tList all exercises by due date descending.\n");
+    println!("  due\n\tList all due exercises by due date descending.\n");
+    println!("  schedule\n\tList dates when exercises will be due.\n");
+    println!("  review [--time_box|-t] [<minutes>]\n\tReview due exercises. Limited by default to {} minutes.", REVIEW_SESSION_TIME_BOX_DEFAULT_MINUTES);
 }
 
 fn edit_command(pk: i32, path: &Path) {
@@ -416,7 +418,7 @@ fn clear_screen() {
     terminal.clear(ClearType::All).unwrap();
 }
 
-fn review_command() {
+fn review_command(time_box_minutes: Option<i64>) {
     let service = ExerciseService::new_live();
 
     if let Err(e) = service {
@@ -442,13 +444,20 @@ fn review_command() {
 
     clear_screen();
 
+    let review_session = ReviewSession::new(time_box_minutes);
+
     for (i, exercise) in exercises.iter_mut().enumerate() {
+        if review_session.has_exceeded_timebox() {
+            clear_screen();
+            println!("Whoops! The allotted review time of {} minutes has elapsed. Not all exercises were completed ({} remain).", review_session.time_box_minutes(), exercise_cnt - i);
+            println!("But, not to worry! Take a break and do the rest later or finish tomorrow. What matters is that you keep trying and keep working on building strong habits.");
+            return;
+        }
+
         println!(
-            "{}Exercise {}/{} - ID {}{}\n",
+            "{}{}{}\n",
             Attribute::Bold,
-            i + 1,
-            exercise_cnt,
-            &exercise.id.unwrap_or(-1),
+            review_session.exercise_display_str(i, exercise_cnt, &exercise),
             Attribute::Reset
         );
 
@@ -494,6 +503,11 @@ fn review_command() {
     }
 
     println!("\n\n{}Done reviewing!{}", Attribute::Bold, Attribute::Reset);
+    println!(
+        "\n{} exercises reviewed in {} minutes.",
+        exercise_cnt,
+        review_session.elapsed_minutes()
+    );
 }
 
 fn main() {
@@ -512,7 +526,7 @@ fn main() {
                 "due" => due_command(),
                 "count" => count_command(),
                 "schedule" => schedule_command(),
-                "review" => review_command(),
+                "review" => review_command(None),
                 _ => {
                     if command != "--help" && command != "-h" && command != "help" {
                         eprintln!("Unknown command '{}'", &command);
@@ -532,6 +546,10 @@ fn main() {
                 "check" => import_command(&param, true),
                 "update" => update_exercise_from_path(Path::new(&param)),
                 "grep" => grep_command(&param),
+                "review" => match param.parse::<i64>() {
+                    Ok(minutes) => review_command(Some(minutes)),
+                    Err(_) => eprintln!("Cannot convert '{}' to a minute amount", param),
+                },
                 _ => {
                     eprintln!("Unknown command '{}'", &command);
                     usage(app_name);
