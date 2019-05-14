@@ -571,10 +571,6 @@ fn main() {
                 "check" => import_command(&param, true),
                 "update" => update_exercise_from_path(Path::new(&param)),
                 "grep" => grep_command(&param),
-                "review" => match param.parse::<i64>() {
-                    Ok(minutes) => review_command(Some(minutes)),
-                    Err(_) => eprintln!("Cannot convert '{}' to a minute amount", param),
-                },
                 _ => {
                     eprintln!("Unknown command '{}'", &command);
                     usage(app_name);
@@ -592,6 +588,11 @@ fn main() {
                 match param.parse::<i32>() {
                     Ok(pk) => edit_command(pk, Path::new(command_option)),
                     Err(_) => eprintln!("Cannot convert '{}' to a primary key", param),
+                }
+            } else if command == "review" && (param == "--time_box" || param == "-t") {
+                match command_option.parse::<i64>() {
+                    Ok(minutes) => review_command(Some(minutes)),
+                    Err(_) => eprintln!("Cannot convert '{}' to a minute amount", param),
                 }
             } else {
                 usage(app_name);
