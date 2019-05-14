@@ -82,7 +82,7 @@ more.
 
 Here is a sample of what the review UI looks like when doing an exercise:
 
-<img src="review_ui.jpg" alt="Sample Arete review screen.">
+<img src="https://github.com/fearofcode/arete/blob/master/review_ui.jpg" alt="Sample Arete review screen.">
 
 The UI is text-based. The top line shows the current exercise being worked on
 (including the ID in case you want to edit it later), and how many minutes
