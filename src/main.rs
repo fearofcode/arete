@@ -447,6 +447,8 @@ fn review_command(time_box_minutes: Option<i64>) {
     let review_session = ReviewSession::new(time_box_minutes);
 
     for (i, exercise) in exercises.iter_mut().enumerate() {
+        // we could set a timer that prints this as soon as time elapses, but
+        // waiting until the next exercise is finished to end it seems fine
         if review_session.has_exceeded_timebox() {
             clear_screen();
             println!("Whoops! The allotted review time of {} minutes has elapsed. Not all exercises were completed ({} remain).", review_session.time_box_minutes(), exercise_cnt - i);
