@@ -1,7 +1,7 @@
 [package]
 name = "arete"
 version = "0.1.0"
-authors = ["Warren Henning <warren@rentlytics.com>"]
+authors = ["Warren Henning <warren.henning@gmail.com>"]
 edition = "2018"
 
 [dependencies]
