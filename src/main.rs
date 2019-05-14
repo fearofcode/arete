@@ -468,6 +468,7 @@ fn review_command(time_box_minutes: Option<i64>) {
         let options = [
             HorizontalMenuOption::new("Know it", 'y'),
             HorizontalMenuOption::new("Don't know it", 'n'),
+            HorizontalMenuOption::new("Quit and edit", 'e'),
         ];
 
         match horizontal_menu_select(&options) {
@@ -475,14 +476,33 @@ fn review_command(time_box_minutes: Option<i64>) {
                 Some(selected_index) => {
                     if selected_index == 0 {
                         confirm_exercise_answer(exercise, &service);
-                    } else {
+                    } else if selected_index == 1 {
                         print!("\n\n");
                         print_labeled_field("Reference", &exercise.reference_answer);
                         print_labeled_field("Source", &exercise.source);
 
                         exercise.update_repetition_interval(false);
                         if let Err(e) = exercise.update(&service) {
-                            eprintln!("Error saving exercise: {}", e);
+                            eprintln!("\n\nError saving exercise: {}", e);
+                        }
+                    } else {
+                        // quit and edit
+                        if !&exercise.id.is_some() {
+                            eprintln!("\n\nExercise has no ID, can't export!");
+                            std::process::exit(1);
+                        }
+
+                        let output_name  = format!("edited_exercise_{}.yaml", &exercise.id.unwrap());
+                        let output_path = Path::new(&output_name[..]);
+                        match &exercise.yaml_export(output_path) {
+                            Ok(_) => { 
+                                println!("\n\nExported exercise to file '{}' for editing. Exiting.", output_path.display());
+                                std::process::exit(0);
+                            },
+                            Err(e) => {
+                                eprintln!("\n\nError exporting exercise: {}", e);
+                                std::process::exit(1);
+                            }
                         }
                     }
                     print_next_exercise_input();

@@ -106,6 +106,19 @@ I hope you find this application useful. Please <a
 href="https://github.com/fearofcode/arete">file an issue</a> if you have any
 questions or problems.
 
+## Missing and awkward features
+
+Since Arete is intended to be simple and command-line only, editing is
+slightly awkward. You export a file to a YAML file, make edits, then import
+it in. It's not great, but it works and is pretty simple. It has the very
+nice benefit of letting you edit in your favorite editor! You can export an
+exercise to edit while reviewing by selecting `Quit and edit` or invoke the
+application with `arete edit <id> <output_path>`.
+
+Deletion is not currently supported. I haven't needed to delete an exercise
+yet. As a workaround, you should be able to just delete it yourself in
+PostgreSQL directly.
+
 ## Installation
 
 ```bash
