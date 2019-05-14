@@ -91,7 +91,7 @@ later), and how many minutes have elapsed in the review session. Review
 sessions are timeboxed to make the habit of using the app more enjoyable.
 
 At the bottom is an interactive text-based selection widget which responds to
-arrow keys and keyboard shortcuts (`y` and `n` in this case).
+arrow keys and keyboard shortcuts (`y`, `n` and `e` in this case).
 
 If you select `Know it`, the referenece answer and source will be displayed.
 If your personal answer matches the reference answer, you mark as it correct
