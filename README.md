@@ -84,10 +84,11 @@ Here is a sample of what the review UI looks like when doing an exercise:
 
 <img src="https://raw.githubusercontent.com/fearofcode/arete/master/review_ui.png" alt="Sample Arete review screen.">
 
-The UI is text-based. The top line shows the current exercise being worked on
-(including the ID in case you want to edit it later), and how many minutes
-have elapsed in the review session. Review sessions are timeboxed to make the
-habit of using the app more enjoyable.
+The UI is text-based and runs in a terminal, so the text will use whatever
+colors and font you have in your terminal. The top line shows the current
+exercise being worked on (including the ID in case you want to edit it
+later), and how many minutes have elapsed in the review session. Review
+sessions are timeboxed to make the habit of using the app more enjoyable.
 
 At the bottom is an interactive text-based selection widget which responds to
 arrow keys and keyboard shortcuts (`y` and `n` in this case).
