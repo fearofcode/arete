@@ -492,13 +492,16 @@ fn review_command(time_box_minutes: Option<i64>) {
                             std::process::exit(1);
                         }
 
-                        let output_name  = format!("edited_exercise_{}.yaml", &exercise.id.unwrap());
+                        let output_name = format!("edited_exercise_{}.yaml", &exercise.id.unwrap());
                         let output_path = Path::new(&output_name[..]);
                         match &exercise.yaml_export(output_path) {
-                            Ok(_) => { 
-                                println!("\n\nExported exercise to file '{}' for editing. Exiting.", output_path.display());
+                            Ok(_) => {
+                                println!(
+                                    "\n\nExported exercise to file '{}' for editing. Exiting.",
+                                    output_path.display()
+                                );
                                 std::process::exit(0);
-                            },
+                            }
                             Err(e) => {
                                 eprintln!("\n\nError exporting exercise: {}", e);
                                 std::process::exit(1);
