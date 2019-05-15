@@ -168,6 +168,13 @@ obscure service.
 That's not to say Dropbox will be around forever, I just trust them more than
 I do a random third-party organization.
 
+## Running tests
+
+Run `bin/run_tests`, which will run the tests single-threaded.
+
+If you run `cargo test`, the database tests that mutate the test database's
+DDL will run simultaneously and fail.
+
 ## Setting up PostgreSQL on Linux (e.g., if using on a VPS)
 
 This is mostly a reminder for myself for when setting this up on a VPS.
