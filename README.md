@@ -1,15 +1,16 @@
 arete
 -----
 
-Arete is a simple command-line flashcard application.
+Arete is a simple command-line flashcard application written in Rust.
 
-It works by importing YAML files containing exercises.
+It works by importing YAML files containing exercises to be reviewed later.
 
 It uses PostgreSQL to store data.
 
 In the future, there may be additional features.
 
-Arete is intended to be used for remembering what you learn about math and science.
+Arete is intended to be used for remembering what you learn about math and
+science by encouraging rigorous, active learning.
 
 ## How it works
 
@@ -130,14 +131,16 @@ application with `arete edit <id> <output_path>`.
 $ git clone https://github.com/fearofcode/arete
 $ cd arete
 $ cargo build --release # this will take a minute or so
-$ cargo run --release
 ```
 
 ## And then
 
+- Install PostgreSQL if you haven't already
+- Make databases for the main database and for testing. I just make databases
+called `arete` and `arete_test`, respectively
 - Copy `config.toml.template` to `config.toml`
 - Fill in the values appropriately
-- Type `arete` for usage
+- Type `cargo run --release` for usage
 
 ## Backup and restore
 
