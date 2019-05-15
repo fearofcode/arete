@@ -1,3 +1,4 @@
+use clap::{App, Arg, SubCommand};
 use crossterm::{terminal, Attribute, ClearType};
 use std::path::Path;
 
@@ -8,24 +9,11 @@ use horizontal_menu::{horizontal_menu_select, HorizontalMenuOption};
 mod review_session;
 use review_session::{ReviewSession, REVIEW_SESSION_TIME_BOX_DEFAULT_MINUTES};
 
-fn usage(app_name: &str) {
-    println!("Usage: {} <command> [command_param]\n", app_name);
-    println!("Available commands:\n");
-    println!("  bootstrap_schema\n\tBootstrap the database schema. Run this first.\n");
-    println!("  drop_schema\n\tDrop the database schema. Normally not needed.\n");
-    println!("  import <path> [--dry_run|-d]\n\tImport a file.\n");
-    println!(
-        "  check <path>\n\tChecks if an input YAML is valid. Equivalent to import --dry_run.\n"
-    );
-    println!("  edit <id> <output_path>\n\tExport an existing exercise for later import. Placeholder feature until I implement an editor here.\n");
-    println!("  update <path>\n\tUpdate an existing exercise in place.\n");
-    println!("  grep <query>\n\tSearch for exercises containing a string.\n");
-    println!("  delete <id>\n\tDelete an exercise by ID.\n");
-    println!("  count\n\tCount exercises.\n");
-    println!("  ls\n\tList all exercises by due date descending.\n");
-    println!("  due\n\tList all due exercises by due date descending.\n");
-    println!("  schedule\n\tList dates when exercises will be due.\n");
-    println!("  review [--time_box|-t] [<minutes>]\n\tReview due exercises. Limited by default to {} minutes.", REVIEW_SESSION_TIME_BOX_DEFAULT_MINUTES);
+fn usage(app: &mut App) {
+    let mut out = std::io::stdout();
+    app.write_long_help(&mut out)
+        .expect("Failed to write to stdout");
+    println!();
 }
 
 fn delete_command(pk: i32) {
@@ -111,7 +99,7 @@ fn update_exercise_from_path(path: &Path) {
             }
         }
         Err(e) => {
-            eprintln!("Error reading in file: {}", e);
+            eprintln!("Error reading in file {}: {}", path.display(), e);
         }
     }
 }
@@ -572,72 +560,202 @@ fn review_command(time_box_minutes: Option<i64>) {
 }
 
 fn main() {
+    let review_str = format!(
+        "Review due exercises. Limited by default to {} minutes",
+        REVIEW_SESSION_TIME_BOX_DEFAULT_MINUTES
+    );
+
+    let mut app = App::new("arete")
+        .version("1.0")
+        .author("Warren Henning <warren.henning@gmail.com>")
+        .about("Simple command-line flashcard application")
+        .subcommand(
+            SubCommand::with_name("bootstrap_schema")
+                .about("Bootstrap the database schema. Run this first."),
+        )
+        .subcommand(
+            SubCommand::with_name("drop_schema")
+                .about("Drop the database schema. Normally not needed."),
+        )
+        .subcommand(
+            SubCommand::with_name("import").about("Import a file").arg(
+                Arg::with_name("path")
+                    .index(1)
+                    .help("The file to import.")
+                    .required(true),
+            ),
+        )
+        .subcommand(
+            SubCommand::with_name("check")
+                .about("Checks if an input YAML is valid.")
+                .arg(
+                    Arg::with_name("path")
+                        .help("The file to check.")
+                        .index(1)
+                        .required(true),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("edit")
+                .about("Export an exercise for later import.")
+                .arg(
+                    Arg::with_name("id")
+                        .help("Primary key of the exercise to export.")
+                        .index(1)
+                        .required(true),
+                )
+                .arg(
+                    Arg::with_name("output_path")
+                        .help("Path to write the file to")
+                        .index(2)
+                        .required(true),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("update")
+                .about("Update an existing exercise in place.")
+                .arg(
+                    Arg::with_name("path")
+                        .help("The file with an exercise to update.")
+                        .index(1)
+                        .required(true),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("grep")
+                .about("Search for exercises containing a string.")
+                .arg(
+                    Arg::with_name("query")
+                        .help("The string to search for (including the ID field).")
+                        .index(1)
+                        .required(true),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("delete")
+                .about("Delete an exercise by ID.")
+                .arg(
+                    Arg::with_name("ID")
+                        .help("Primary key of the exercise to delete.")
+                        .index(1)
+                        .required(true),
+                ),
+        )
+        .subcommand(SubCommand::with_name("count").about("Count exercises."))
+        .subcommand(SubCommand::with_name("ls").about("List all exercuses by due date descending."))
+        .subcommand(
+            SubCommand::with_name("due").about("List all due exercises by due date descending."),
+        )
+        .subcommand(
+            SubCommand::with_name("schedule").about("List dates when exercises will be due"),
+        )
+        .subcommand(
+            SubCommand::with_name("review").about(&review_str[..]).arg(
+                Arg::with_name("minutes")
+                    .help("Number of minutes to spend reviewing")
+                    .takes_value(true)
+                    .index(1),
+            ),
+        );
+
+    let matches = app.clone().get_matches();
+
+    if matches.subcommand_name().is_none() {
+        usage(&mut app);
+        return;
+    }
+
+    // arguments in subcommands don't work properly. yes, I checked the docs and
+    // GitHub. matches.value_of("<param>") is None for all of them and
+    // matches.is_present() returns false, so it won't work, so I have to do
+    // this, so no, I am not misusing the library any more than is apparently
+    // necessary. let me know if I've done something wrong and there is a way to
+    // make this work that actually does work.
     let args = std::env::args().collect::<Vec<_>>();
 
-    let app_name = &args[0];
-
-    match args.len() {
-        2 => {
-            let command = &args[1];
-
-            match &command[..] {
-                "bootstrap_schema" => bootstrap_schema_command(),
-                "drop_schema" => drop_schema_command(),
-                "ls" => ls_command(),
-                "due" => due_command(),
-                "count" => count_command(),
-                "schedule" => schedule_command(),
-                "review" => review_command(None),
-                _ => {
-                    if command != "--help" && command != "-h" && command != "help" {
-                        eprintln!("Unknown command '{}'", &command);
-                    }
-                    usage(app_name);
-                }
-            }
+    match matches.subcommand_name().unwrap() {
+        "bootstrap_schema" => {
+            bootstrap_schema_command();
+            return;
         }
-        3 => {
-            let command = &args[1];
-
-            let param = &args[2];
-
-            match &command[..] {
-                "import" => import_command(&param, false),
-                // check is a synonym for import --dry_run
-                "check" => import_command(&param, true),
-                "update" => update_exercise_from_path(Path::new(&param)),
-                "delete" => match param.parse::<i32>() {
-                    Ok(pk) => delete_command(pk),
-                    Err(_) => eprintln!("Cannot convert '{}' to a primary key", param),
-                },
-                "grep" => grep_command(&param),
-                _ => {
-                    eprintln!("Unknown command '{}'", &command);
-                    usage(app_name);
-                }
-            }
+        "drop_schema" => {
+            drop_schema_command();
+            return;
         }
-        4 => {
-            let command = &args[1];
-            let param = &args[2];
-            let command_option = &args[3];
-
-            if command == "import" && (command_option == "--dry_run" || command_option == "-d") {
-                import_command(&param, true);
-            } else if command == "edit" {
-                match param.parse::<i32>() {
-                    Ok(pk) => edit_command(pk, Path::new(command_option)),
-                    Err(_) => eprintln!("Cannot convert '{}' to a primary key", param),
-                }
-            } else if command == "review" && (param == "--time_box" || param == "-t") {
-                match command_option.parse::<i64>() {
+        "import" => {
+            // see comment above
+            let path = &args[2];
+            import_command(&path, false);
+            return;
+        }
+        "check" => {
+            // see comment above
+            let path = &args[2];
+            import_command(&path, true);
+            return;
+        }
+        "edit" => {
+            // see comment above
+            let id_str = &args[2];
+            let output_path = &args[3];
+            match id_str.parse::<i32>() {
+                Ok(id) => edit_command(id, Path::new(&output_path)),
+                Err(_) => eprintln!("Cannot convert '{}' to a primary key", id_str),
+            }
+            return;
+        }
+        "update" => {
+            // see comment above
+            let path = &args[2];
+            update_exercise_from_path(Path::new(&path));
+            return;
+        }
+        "grep" => {
+            // see comment above
+            let query = &args[2];
+            grep_command(&query);
+            return;
+        }
+        "delete" => {
+            // see comment above
+            let id_str = &args[2];
+            match id_str.parse::<i32>() {
+                Ok(id) => delete_command(id),
+                Err(_) => eprintln!("Cannot convert '{}' to a primary key", id_str),
+            }
+            return;
+        }
+        "count" => {
+            count_command();
+            return;
+        }
+        "ls" => {
+            ls_command();
+            return;
+        }
+        "due" => {
+            due_command();
+            return;
+        }
+        "schedule" => {
+            schedule_command();
+            return;
+        }
+        "review" => {
+            // see comment above
+            if args.len() == 3 {
+                let minutes_str = &args[2];
+                match minutes_str.parse::<i64>() {
                     Ok(minutes) => review_command(Some(minutes)),
-                    Err(_) => eprintln!("Cannot convert '{}' to a minute amount", param),
+                    Err(_) => eprintln!("Cannot convert '{}' to a minute amount", minutes_str),
                 }
             } else {
-                usage(app_name);
+                review_command(None);
             }
+            return;
         }
-        _ => usage(app_name),
+        _ => {}
     }
+
+    usage(&mut app);
 }
