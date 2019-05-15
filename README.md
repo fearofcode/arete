@@ -116,10 +116,6 @@ nice benefit of letting you edit in your favorite editor! You can export an
 exercise to edit while reviewing by selecting `Quit and edit` or invoke the
 application with `arete edit <id> <output_path>`.
 
-Deletion is not currently supported. I haven't needed to delete an exercise
-yet. As a workaround, you should be able to just delete it yourself in
-PostgreSQL directly.
-
 ## Installation
 
 ```bash

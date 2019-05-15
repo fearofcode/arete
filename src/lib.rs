@@ -307,6 +307,21 @@ impl ExerciseService {
         consecutive_successful_reviews"
     }
 
+    pub fn delete_by_pk(&self, pk: i32) -> Result<(), Box<dyn Error>> {
+        let rows_affected = &self
+            .conn
+            .execute("delete from exercises where id = $1", &[&pk])?;
+
+        if *rows_affected == 1 {
+            Ok(())
+        } else {
+            Err(make_error(format!(
+                "Expected 1 row to be affected, got {} instead",
+                rows_affected
+            )))
+        }
+    }
+
     pub fn get_by_pk(&self, pk: i32) -> Option<Exercise> {
         let query = format!(
             "
@@ -1052,6 +1067,13 @@ and one more";
         assert_eq!(schedule.len(), 2);
         assert_eq!(schedule[0], (today, 1));
         assert_eq!(schedule[1], (tomorrow, 1));
+
+        assert!(service.delete_by_pk(saved_exercise.id.unwrap()).is_ok());
+
+        let saved_exercises = service.get_all_by_due_date_desc();
+        assert_eq!(saved_exercises.len(), 1);
+
+        assert!(service.delete_by_pk(1234).is_err());
     }
 
 }

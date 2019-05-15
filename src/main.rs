@@ -20,11 +20,47 @@ fn usage(app_name: &str) {
     println!("  edit <id> <output_path>\n\tExport an existing exercise for later import. Placeholder feature until I implement an editor here.\n");
     println!("  update <path>\n\tUpdate an existing exercise in place.\n");
     println!("  grep <query>\n\tSearch for exercises containing a string.\n");
+    println!("  delete <id>\n\tDelete an exercise by ID.\n");
     println!("  count\n\tCount exercises.\n");
     println!("  ls\n\tList all exercises by due date descending.\n");
     println!("  due\n\tList all due exercises by due date descending.\n");
     println!("  schedule\n\tList dates when exercises will be due.\n");
     println!("  review [--time_box|-t] [<minutes>]\n\tReview due exercises. Limited by default to {} minutes.", REVIEW_SESSION_TIME_BOX_DEFAULT_MINUTES);
+}
+
+fn delete_command(pk: i32) {
+    eprintln!(
+        "Really delete exercise {}? Type 'delete' without quotes to continue",
+        pk
+    );
+    let mut buffer = String::new();
+    if std::io::stdin().read_line(&mut buffer).is_err() {
+        eprintln!("Invalid response");
+        return;
+    }
+
+    let trimmed_input = buffer.trim();
+    if trimmed_input != "delete" {
+        eprintln!(
+            "Got response \"{}\" but needed \"delete\" to proceed.",
+            trimmed_input
+        );
+        return;
+    }
+
+    let service = ExerciseService::new_live();
+
+    if let Err(e) = service {
+        eprintln!("Error starting up: {}", e);
+        return;
+    }
+
+    let service = service.unwrap();
+
+    match service.delete_by_pk(pk) {
+        Ok(_) => println!("Exercise {} has been deleted.", pk),
+        Err(e) => eprintln!("Error: {}", e),
+    }
 }
 
 fn edit_command(pk: i32, path: &Path) {
@@ -570,6 +606,10 @@ fn main() {
                 // check is a synonym for import --dry_run
                 "check" => import_command(&param, true),
                 "update" => update_exercise_from_path(Path::new(&param)),
+                "delete" => match param.parse::<i32>() {
+                    Ok(pk) => delete_command(pk),
+                    Err(_) => eprintln!("Cannot convert '{}' to a primary key", param),
+                },
                 "grep" => grep_command(&param),
                 _ => {
                     eprintln!("Unknown command '{}'", &command);
