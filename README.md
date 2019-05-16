@@ -89,6 +89,11 @@ something, I'll update my answer to say that I didn't know it so I can review
 it more. The repetition interval of that exercise will be reset to allow you
 to practice more.
 
+One way to make this workflow even nicer is to decrease the latency of
+evaluating your Python scripts by using a special purpose evaluator, like <a
+href="https://www.github.com/fearofcode/pyrepl">pyrepl</a>. a tool of my own
+creation, intended specifically for use with this application.
+
 Here is a sample of what the review UI looks like when doing an exercise:
 
 <img src="https://raw.githubusercontent.com/fearofcode/arete/master/review_ui.png" alt="Sample Arete review screen.">
