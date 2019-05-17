@@ -432,7 +432,7 @@ fn confirm_exercise_answer(exercise: &mut Exercise, service: &ExerciseService) {
 }
 
 fn print_next_exercise_input() {
-    if horizontal_menu_select(&[HorizontalMenuOption::new("Next exercise", 'n')]).is_err() {
+    if horizontal_menu_select(&[HorizontalMenuOption::new("Continue", 'c')]).is_err() {
         std::process::exit(1);
     }
 }
@@ -555,7 +555,7 @@ fn review_command(time_box_minutes: Option<i64>) {
     println!(
         "\n{} exercises reviewed in {} minutes.",
         exercise_cnt,
-        review_session.elapsed_minutes()
+        review_session.elapsed_minutes().num_minutes()
     );
 }
 
