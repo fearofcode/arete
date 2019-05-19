@@ -566,7 +566,7 @@ fn main() {
     );
 
     let mut app = App::new("arete")
-        .version("1.0")
+        .version("0.1.0")
         .author("Warren Henning <warren.henning@gmail.com>")
         .about("Simple command-line flashcard application")
         .subcommand(
