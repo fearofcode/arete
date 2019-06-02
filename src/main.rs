@@ -654,7 +654,10 @@ fn main() {
                         .required(true),
                 ),
         )
-        .subcommand(SubCommand::with_name("test_connection").about("Test the database configuration in config.toml."))
+        .subcommand(
+            SubCommand::with_name("test_connection")
+                .about("Test the database configuration in config.toml."),
+        )
         .subcommand(SubCommand::with_name("count").about("Count exercises."))
         .subcommand(SubCommand::with_name("ls").about("List all exercuses by due date descending."))
         .subcommand(

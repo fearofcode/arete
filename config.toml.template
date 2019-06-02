@@ -1,3 +1,2 @@
 live_url = "postgres://postgres:postgres@localhost:5432/arete"
 test_url = "postgres://postgres:postgres@localhost:5432/arete_test"
-
