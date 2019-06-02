@@ -13,7 +13,7 @@ pub struct ReviewSession {
 
 impl ReviewSession {
     pub fn time_box_default() -> Duration {
-        Duration::minutes(20)
+        Duration::minutes(REVIEW_SESSION_TIME_BOX_DEFAULT_MINUTES)
     }
 
     pub fn new(time_box_minutes: Option<i64>) -> ReviewSession {
