@@ -121,7 +121,7 @@ I hope you find this application useful. Please <a
 href="https://github.com/fearofcode/arete">file an issue</a> if you have any
 questions or problems.
 
-## Missing and awkward features
+## Limitations and bugs
 
 Since Arete is intended to be simple and command-line only, editing is
 slightly awkward. You export a file to a YAML file, make edits, then import
@@ -129,6 +129,13 @@ it in. It's not great, but it works and is pretty simple. It has the very
 nice benefit of letting you edit in your favorite editor! You can export an
 exercise to edit while reviewing by selecting `Quit and edit` or invoke the
 application with `arete edit <id> <output_path>`.
+
+Although I've used Arete on Windows, the review UI glitches out on Windows' default
+command prompt. Other third-party shells, like <a href="https://cmder.net/">cmder</a>,
+work better but still have glitches.
+
+This maybe in the console library I'm using, <a href="https://github.com/TimonPost/crossterm">crossterm</a>,
+or in how I'm using it.
 
 ## Installation
 
