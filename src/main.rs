@@ -325,6 +325,19 @@ fn count_command() {
     println!("{} exercises are currently due.\n", due_cnt);
 }
 
+fn test_connection_command() {
+    if let Err(e) = ExerciseService::new_live() {
+        eprintln!("Error starting up live connection: {}", e);
+        return;
+    }
+    if let Err(e) = ExerciseService::maybe_new_test() {
+        eprintln!("Error starting up test connection: {}", e);
+        return;
+    }
+
+    println!("Live and test connections succeeded.");
+}
+
 fn ls_command() {
     let service = ExerciseService::new_live();
 
@@ -641,6 +654,7 @@ fn main() {
                         .required(true),
                 ),
         )
+        .subcommand(SubCommand::with_name("test_connection").about("Test the database configuration in config.toml."))
         .subcommand(SubCommand::with_name("count").about("Count exercises."))
         .subcommand(SubCommand::with_name("ls").about("List all exercuses by due date descending."))
         .subcommand(
@@ -727,6 +741,10 @@ fn main() {
         }
         "count" => {
             count_command();
+            return;
+        }
+        "test_connection" => {
+            test_connection_command();
             return;
         }
         "ls" => {

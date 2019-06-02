@@ -244,6 +244,14 @@ impl ExerciseService {
         Ok(ExerciseService { conn })
     }
 
+    /* Helper for testing connections. new_test() is more convenient for actual test setups. */
+    pub fn maybe_new_test() -> Result<ExerciseService, Box<dyn Error>> {
+        let config = read_config_file()?;
+        let conn = Connection::connect(&config.test_url[..], TlsMode::None)?;
+
+        Ok(ExerciseService { conn })
+    }
+
     pub fn new_test() -> ExerciseService {
         // it's OK to unwrap here because we're in a test environment and failing here is fine
         let config = read_config_file().unwrap();
@@ -542,6 +550,8 @@ mod tests {
 
     #[test]
     fn test_schema_bootstrapping_dropping_loaded() {
+        assert!(ExerciseService::maybe_new_test().is_ok());
+
         let service = ExerciseService::new_test();
 
         assert!(service.schema_is_loaded());
