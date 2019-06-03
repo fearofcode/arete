@@ -51,7 +51,7 @@ struct ImportedExercise {
     pub reference_answer: String,
 }
 
-fn make_error(error_string: String) -> Box<Error> {
+fn make_error(error_string: String) -> Box<dyn Error> {
     Box::new(std::io::Error::new(std::io::ErrorKind::Other, error_string))
 }
 
@@ -78,7 +78,7 @@ fn todays_date() -> NaiveDate {
     Local::today().naive_local()
 }
 
-fn read_config_file() -> Result<DbConfig, Box<Error>> {
+fn read_config_file() -> Result<DbConfig, Box<dyn Error>> {
     let config_str = std::fs::read_to_string("config.toml")?;
 
     match toml::from_str(&config_str) {
@@ -177,7 +177,7 @@ reference_answer: |+
         }
 
         // we can let postgres insert some defaults
-        let values: &[&ToSql] = &[
+        let values: &[&dyn ToSql] = &[
             &self.created_at,
             &self.due_at,
             &self.description,
@@ -202,7 +202,7 @@ reference_answer: |+
         let query = "update exercises set created_at = $1, due_at = $2, description = $3, source = $4, 
         reference_answer = $5, update_interval = $6, consecutive_successful_reviews = $7 where id = $8";
 
-        let values: &[&ToSql] = &[
+        let values: &[&dyn ToSql] = &[
             &self.created_at,
             &self.due_at,
             &self.description,
@@ -544,7 +544,7 @@ pub fn parse_updated_exercise(path: &Path) -> Result<ExportedExercise, Box<dyn E
 mod tests {
     use super::*;
 
-    fn stringify_boxed_error(e: Box<Error>) -> String {
+    fn stringify_boxed_error(e: Box<dyn Error>) -> String {
         format!("{}", e)
     }
 
