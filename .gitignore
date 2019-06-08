@@ -10,3 +10,4 @@ bin/backup
 bin/restore
 bin/restore.bat
 arete_backup.sql
+tags

@@ -427,9 +427,9 @@ fn confirm_exercise_answer(exercise: &mut Exercise, service: &ExerciseService) {
                 }
 
                 if was_correct {
-                    println!("\n\nMarked exercise correct.\n");
+                    println!("\n\nMarked exercise correct. Exercise is now due at: {}\n", &exercise.due_at);
                 } else {
-                    println!("\n\nMarked exercise incorrect.\n");
+                    println!("\n\nMarked exercise incorrect. Exercise is now due at: {}\n", &exercise.due_at);
                 }
             }
             None => {
