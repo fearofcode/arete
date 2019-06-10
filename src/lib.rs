@@ -199,7 +199,7 @@ reference_answer: |+
             return Err(make_error("Cannot insert, has no PK".to_string()));
         }
 
-        let query = "update exercises set created_at = $1, due_at = $2, description = $3, source = $4, 
+        let query = "update exercises set created_at = $1, due_at = $2, description = $3, source = $4,
         reference_answer = $5, update_interval = $6, consecutive_successful_reviews = $7 where id = $8";
 
         let values: &[&dyn ToSql] = &[
@@ -296,7 +296,7 @@ impl ExerciseService {
     pub fn schema_is_loaded(&self) -> bool {
         let query = "SELECT EXISTS (
             SELECT 1
-            FROM   information_schema.tables 
+            FROM   information_schema.tables
             WHERE  table_schema = 'public'
             AND    table_name = 'exercises'
         )";
@@ -311,7 +311,7 @@ impl ExerciseService {
     }
 
     fn sql_column_list() -> &'static str {
-        "id, created_at, due_at, description, source, reference_answer, update_interval, 
+        "id, created_at, due_at, description, source, reference_answer, update_interval,
         consecutive_successful_reviews"
     }
 
@@ -333,7 +333,7 @@ impl ExerciseService {
     pub fn get_by_pk(&self, pk: i32) -> Option<Exercise> {
         let query = format!(
             "
-        SELECT 
+        SELECT
             {}
         FROM
             exercises
@@ -354,14 +354,14 @@ impl ExerciseService {
 
         let due_query = format!(
             "
-        SELECT 
+        SELECT
             {}
         FROM
             exercises
         WHERE
             due_at <= $1
         ORDER BY
-            due_at desc, 
+            due_at desc,
             id desc",
             ExerciseService::sql_column_list()
         );
@@ -380,7 +380,7 @@ impl ExerciseService {
 
         let grep_query = format!(
             "
-        SELECT 
+        SELECT
             {}
         FROM
             exercises
@@ -390,7 +390,7 @@ impl ExerciseService {
             or reference_answer like ('%' || $1 || '%')
             or id::text like ('%' || $1 || '%')
         ORDER BY
-            due_at desc, 
+            due_at desc,
             id desc",
             ExerciseService::sql_column_list()
         );
@@ -440,12 +440,12 @@ impl ExerciseService {
 
         let due_query = format!(
             "
-        SELECT 
+        SELECT
             {}
         FROM
             exercises
         ORDER BY
-            due_at desc, 
+            due_at desc,
             id desc",
             ExerciseService::sql_column_list()
         );
