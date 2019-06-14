@@ -3,4 +3,6 @@
 set -euxo pipefail
 
 scp warren@warrenhenning.online:/home/warren/arete/arete_backup.sql arete_backup.sql
+dropdb arete
+createdb arete
 psql -d arete -U postgres -f arete_backup.sql
